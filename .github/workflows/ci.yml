@@ -30,6 +30,11 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      # Slint's core links fontconfig on Linux, even without a backend or renderer.
+      - name: Linux system libraries for Slint
+        if: steps.crates.outputs.present == 'true' && runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libfontconfig-dev
+
       - name: Format
         if: steps.crates.outputs.present == 'true'
         run: cargo fmt --all --check
