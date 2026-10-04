@@ -1,0 +1,27 @@
+[package]
+name = "desktop-notify"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Desktop notifications with click-to-open by id, the macOS Dock badge, and bringing the app to the front."
+
+[features]
+# Off macOS everything is a no-op unless this is on: then notifications are
+# shown through notify-rust (XDG on Linux, toasts on Windows). Show-only:
+# clicks aren't routed to the install() callback there, and withdraw() and
+# the badge stay no-ops.
+fallback = ["dep:notify-rust"]
+
+[dependencies]
+log = "0.4"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+block2 = "0.6"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSDockTile", "NSResponder", "NSRunningApplication"] }
+objc2-foundation = "0.3"
+objc2-user-notifications = "0.3.2"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+notify-rust = { version = "4.18", optional = true }
