@@ -1,0 +1,12 @@
+[package]
+name = "slint-model-sync"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Bring a Slint VecModel to a wanted list of keyed, versioned rows with minimal inserts, removes and updates, so ListView keeps its scroll position."
+
+[dependencies]
+# Only the model types: no backend, no renderer. compat-1-18 is Slint's
+# mandatory feature when default features are off.
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18"] }
