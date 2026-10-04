@@ -3,8 +3,8 @@
 Shared building blocks for desktop apps built with [Slint](https://slint.dev), extracted from
 [slinty-pi](https://github.com/tilladam/slinty-pi) and yapper.
 
-**Status:** empty. Crates land one at a time; the repository stays private until the first
-ones have settled.
+**Status:** early. The crates below exist and are tested in CI; no app uses them from here yet.
+The repository stays private until they have settled.
 
 ## Rules
 
@@ -17,25 +17,34 @@ ones have settled.
 - **No copied AGPL code.** Ideas seen in AGPL projects are reimplemented
   from a description, never copied.
 
-## Planned crates
+## Crates
 
 | Crate | Slint? | What it does |
 |---|---|---|
-| `md-segments` | no | Markdown → segments (prose, headings, code, quotes, tables), syntect highlighting, linkify |
+| `md-segments` | no | Markdown → segments (prose, headings, code, quotes, tables), syntect highlighting (feature `highlight`), bare-URL linking and `:shortcode:` emoji |
 | `emoji-shortcodes` | no | `:shortcode:` tables (iamcal, joypixels) |
-| `desktop-clipboard` | no | Clipboard images as their original encoded bytes |
-| `desktop-notify` | no | Notifications and dock badge, if no existing crate fits |
-| `slint-model-sync` | yes | Keyed `VecModel` reconcile that keeps `ListView` scroll positions |
-| `slint-file-drop` | yes | OS file drops with hover state and drop position |
-| `slint-widgets` | yes | `.slint` components: command palette, code block, copy button, tokens, SVG icons |
-| `local-llm` | no | rapid-mlx / llama.cpp / Ollama management; OpenAI-compatible streaming client |
+| `desktop-clipboard` | no | Clipboard file lists, or images as their original encoded bytes; bounded `to_png` (feature `decoding-fallback` off macOS) |
+| `desktop-notify` | no | macOS notifications with click-to-open by id, Dock badge, activate (feature `fallback`: notify-rust elsewhere) |
+| `palette-rank` | no | Fuzzy ranking for command palettes (nucleo-matcher) |
+| `slint-model-sync` | yes | Keyed, versioned `VecModel` reconcile that keeps `ListView` scroll positions |
+| `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `CodeBlock`, `CommandPalette` |
+| `slint-widgets-gallery` | yes | Not published: shows the widgets; `GALLERY_SCHEME=light\|dark`, `GALLERY_PALETTE=1` |
+
+Planned: `slint-file-drop` (OS file drops with position) and `local-llm` (rapid-mlx / llama.cpp /
+Ollama management, OpenAI-compatible streaming client).
 
 ## Using a crate
 
-Until crates are published, depend on a tag:
+There are no tags or releases yet: pin a commit.
 
 ```toml
-md-segments = { git = "https://github.com/tilladam/slint-kit", tag = "v0.1.0" }
+md-segments = { git = "https://github.com/tilladam/slint-kit", rev = "<commit>" }
 ```
+
+While the repository is private, cargo needs SSH access to fetch it, e.g.
+`git = "ssh://git@github.com/tilladam/slint-kit"`.
+
+`slint-widgets` is used as a **build-dependency**: pass `slint_widgets::library_paths()` to
+`slint_build::CompilerConfiguration::with_library_paths` and `import { … } from "@slint-widgets"`.
 
 Slint crates here follow the Slint minor version their consumers use (currently 1.18).
