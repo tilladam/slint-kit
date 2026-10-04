@@ -9,6 +9,7 @@ description = "Shows slint-widgets' components; used to check them by screenshot
 
 [dependencies]
 md-segments = { path = "../md-segments" }
+palette-rank = { path = "../palette-rank" }
 slint-widgets = { path = "../slint-widgets" }
 # Software renderer on every platform: light to build, and pixel parity with
 # an app's Skia build is not the point of the gallery.

@@ -1,5 +1,5 @@
-import { KitStyle, CopyButton, CodeBlock, CodeLine } from "@slint-widgets";
-import { Palette } from "std-widgets.slint";
+import { KitStyle, CopyButton, CodeBlock, CodeLine, CommandPalette, PaletteRow } from "@slint-widgets";
+import { Button, Palette } from "std-widgets.slint";
 
 export { KitStyle }
 
@@ -7,14 +7,19 @@ export component Gallery inherits Window {
     title: "slint-widgets gallery";
     default-font-family: "SF Pro";
     preferred-width: 640px;
-    preferred-height: 300px;
+    preferred-height: 460px;
     background: Palette.background;
 
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
     in property <string> code;
     in property <[CodeLine]> code-lines;
     in property <color> code-background;
-    property <string> last-copied;
+    // What the last copy or palette run did.
+    in-out property <string> status;
+    in-out property <bool> palette-visible;
+    in property <[PaletteRow]> palette-entries;
+    callback palette-query(string);
+    callback palette-exec(string);
 
     // "light" or "dark" forces Palette's colour scheme. A function, not a
     // `changed` handler: those run later, so `dark` would still be stale
@@ -41,12 +46,20 @@ export component Gallery inherits Window {
             }
             CopyButton {
                 payload: "copied text";
-                copy-requested(t) => { root.last-copied = t; }
+                copy-requested(t) => { root.status = "copied: " + t; }
             }
             Text {
-                text: root.last-copied == "" ? "" : "copied: " + root.last-copied;
+                text: root.status;
                 color: KitStyle.dim;
                 vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Button {
+                text: "Command palette";
+                clicked => { root.palette-visible = true; }
             }
         }
         CodeBlock {
@@ -54,7 +67,23 @@ export component Gallery inherits Window {
             code: root.code;
             lines: root.code-lines;
             code-background: root.code-background;
-            copy-requested(t) => { root.last-copied = t.character-count + " characters of code"; }
+            copy-requested(t) => { root.status = "copied " + t.character-count + " characters of code"; }
+        }
+    }
+
+    if root.palette-visible: CommandPalette {
+        x: 0;
+        y: 0;
+        width: root.width;
+        height: root.height;
+        entries: root.palette-entries;
+        placeholder-text: "Type a command, session, or action…";
+        close-shortcut-key: "p";
+        close => { root.palette-visible = false; }
+        query-changed(q) => { root.palette-query(q); }
+        exec(id) => {
+            root.palette-visible = false;
+            root.palette-exec(id);
         }
     }
 }

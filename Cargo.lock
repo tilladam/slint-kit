@@ -2575,6 +2575,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nucleo-matcher"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf33f538733d1a5a3494b836ba913207f14d9d4a1d3cd67030c5061bdd2cac85"
+dependencies = [
+ "memchr",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "num-conv"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3015,6 +3025,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
 dependencies = [
  "ttf-parser",
+]
+
+[[package]]
+name = "palette-rank"
+version = "0.1.0"
+dependencies = [
+ "nucleo-matcher",
 ]
 
 [[package]]
@@ -3862,6 +3879,7 @@ name = "slint-widgets-gallery"
 version = "0.0.0"
 dependencies = [
  "md-segments",
+ "palette-rank",
  "slint",
  "slint-build",
  "slint-widgets",

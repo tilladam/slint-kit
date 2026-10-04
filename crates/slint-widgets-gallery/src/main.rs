@@ -14,6 +14,50 @@ fn even_square_sum(xs: &[i64]) -> i64 {
 fn main() {
     println!("{}", even_square_sum(&[1, 2, 3, 4])); // a long trailing comment that makes this line wider than the card"#;
 
+/// Sample entries in slinty-pi's style: (id, icon, label, detail).
+const ENTRIES: &[(&str, &str, &str, &str)] = &[
+    (
+        "action:new-session",
+        "▸",
+        "New session",
+        "start fresh in this project",
+    ),
+    (
+        "action:open-tree",
+        "▸",
+        "Open session tree",
+        "browse and fork from any point",
+    ),
+    ("action:toggle-sidebar", "▸", "Toggle sidebar", ""),
+    ("session:1", "≡", "Refactor the parser module", "2026-10-03"),
+    ("session:2", "≡", "Test run walkthrough", "2026-09-28"),
+    ("command:compact", "/", "/compact", "compact the context"),
+    ("command:model", "/", "/model", "choose a model"),
+    (
+        "model:0",
+        "◇",
+        "qwen3.5-4b · rapid-mlx · local",
+        "load model",
+    ),
+];
+
+fn palette_rows(query: &str) -> ModelRc<PaletteRow> {
+    let ranked = palette_rank::rank(ENTRIES, query, palette_rank::DEFAULT_LIMIT, |e| {
+        format!("{} {}", e.2, e.3)
+    });
+    ModelRc::new(VecModel::from(
+        ranked
+            .into_iter()
+            .map(|(id, icon, label, detail)| PaletteRow {
+                id: id.into(),
+                icon: icon.into(),
+                label: label.into(),
+                detail: detail.into(),
+            })
+            .collect::<Vec<_>>(),
+    ))
+}
+
 fn code_lines(code: &str, dark: bool) -> Vec<CodeLine> {
     highlight::highlight_lines(code, "rust", dark)
         .into_iter()
@@ -43,5 +87,23 @@ fn main() -> Result<(), slint::PlatformError> {
     app.set_code_lines(ModelRc::new(VecModel::from(code_lines(SAMPLE, dark))));
     let (r, g, b) = highlight::theme_background(dark);
     app.set_code_background(Color::from_rgb_u8(r, g, b));
+
+    app.set_palette_entries(palette_rows(""));
+    let weak = app.as_weak();
+    app.on_palette_query(move |q| {
+        if let Some(app) = weak.upgrade() {
+            app.set_palette_entries(palette_rows(&q));
+        }
+    });
+    let weak = app.as_weak();
+    app.on_palette_exec(move |id| {
+        if let Some(app) = weak.upgrade() {
+            app.set_status(format!("ran {id}").into());
+            app.set_palette_entries(palette_rows(""));
+        }
+    });
+    if std::env::var_os("GALLERY_PALETTE").is_some() {
+        app.set_palette_visible(true);
+    }
     app.run()
 }
