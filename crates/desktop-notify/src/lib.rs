@@ -249,13 +249,14 @@ mod mac {
     }
 }
 
-#[cfg(test)]
+// With the fallback on, notify() would try a real notification server, so
+// there is nothing safe to call off macOS.
+#[cfg(all(test, any(target_os = "macos", not(feature = "fallback"))))]
 mod tests {
     use super::*;
 
     /// `cargo test` binaries aren't app bundles (and tests don't run on the
     /// main thread), so every call must be a safe no-op.
-    #[cfg(any(target_os = "macos", not(feature = "fallback")))]
     #[test]
     fn calls_without_a_bundle_are_no_ops() {
         install("test", |_| {});
