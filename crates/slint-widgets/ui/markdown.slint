@@ -1,0 +1,139 @@
+import { Palette } from "std-widgets.slint";
+import { KitStyle } from "style.slint";
+import { CopyButton } from "copy-button.slint";
+
+// Blocks for md-segments' segments: prose, heading, quote, rule, table (code
+// is CodeBlock). Each block with a non-empty `copy-payload` shows a copy
+// button at its right; copying itself is the app's job.
+
+// A prose paragraph or list (StyledText: md-segments' inline markdown).
+export component ProseBlock inherits HorizontalLayout {
+    in property <styled-text> text;
+    in property <string> copy-payload;
+    callback open-link(string);
+    callback copy-requested(string);
+    padding-right: 12px;
+    StyledText {
+        text: root.text;
+        default-font-size: 14px;
+        default-color: Palette.foreground;
+        link-color: Palette.accent-background;
+        link-clicked(l) => { root.open-link(l); }
+    }
+    if root.copy-payload != "": Rectangle { horizontal-stretch: 1; min-width: 8px; }
+    if root.copy-payload != "": CopyButton {
+        payload: root.copy-payload;
+        copy-requested(t) => { root.copy-requested(t); }
+    }
+}
+
+export component HeadingBlock inherits HorizontalLayout {
+    in property <string> text;
+    in property <int> level: 1;
+    in property <string> copy-payload;
+    callback copy-requested(string);
+    Text {
+        text: root.text;
+        wrap: word-wrap;
+        font-size: root.level == 1 ? 20px
+            : root.level == 2 ? 17.5px
+            : root.level == 3 ? 15.5px
+            : 14px;
+        font-weight: 700;
+        // h4+ is body-sized; set it apart from bold prose by dimming.
+        color: root.level >= 4 ? Palette.foreground.transparentize(0.2) : Palette.foreground;
+    }
+    if root.copy-payload != "": Rectangle { horizontal-stretch: 1; min-width: 8px; }
+    if root.copy-payload != "": CopyButton {
+        payload: root.copy-payload;
+        copy-requested(t) => { root.copy-requested(t); }
+    }
+}
+
+// A block quote: a bar, then the quote's inline markdown, dimmed.
+export component QuoteBlock inherits HorizontalLayout {
+    in property <styled-text> text;
+    in property <string> copy-payload;
+    callback open-link(string);
+    callback copy-requested(string);
+    padding-right: 12px;
+    spacing: 10px;
+    Rectangle {
+        width: 3px;
+        border-radius: 1.5px;
+        background: Palette.foreground.transparentize(0.75);
+    }
+    StyledText {
+        text: root.text;
+        default-font-size: 14px;
+        default-color: KitStyle.dim;
+        link-color: Palette.accent-background;
+        link-clicked(l) => { root.open-link(l); }
+    }
+    if root.copy-payload != "": Rectangle { horizontal-stretch: 1; min-width: 8px; }
+    if root.copy-payload != "": CopyButton {
+        payload: root.copy-payload;
+        copy-requested(t) => { root.copy-requested(t); }
+    }
+}
+
+export component RuleBlock inherits HorizontalLayout {
+    padding-top: 5px;
+    padding-bottom: 5px;
+    padding-right: 12px;
+    Rectangle {
+        height: 1px;
+        background: KitStyle.hairline;
+    }
+}
+
+export struct TableCell {
+    text: string,
+    header: bool,
+    // The column's share of the table width (md-segments' column_layout);
+    // the same for every cell of a column.
+    weight: float,
+}
+
+export struct TableRowCells {
+    cells: [TableCell],
+}
+
+// A table, row-major so a wrapping cell grows its whole row. Give it an
+// explicit width (e.g. min(available, md-segments' natural width)).
+export component TableBlock inherits Rectangle {
+    in property <[TableRowCells]> rows;
+
+    background: KitStyle.hairline;
+    border-radius: KitStyle.radius;
+    border-width: 1px;
+    border-color: KitStyle.hairline;
+    clip: true;
+
+    VerticalLayout {
+        padding: 1px;
+        spacing: 1px;
+        for row in root.rows: HorizontalLayout {
+            spacing: 1px;
+            for cell in row.cells: Rectangle {
+                // 24px plus the column's share of what's left, so widths
+                // always add up to the table's width. Explicit because each
+                // row is its own HorizontalLayout: stretch weights would size
+                // every row's columns independently and they'd drift apart.
+                // (Row heights need no help since Slint 1.18.1 fixed #12776.)
+                width: 24px + max(0px, root.width - 2px - (row.cells.length - 1) * 1px - row.cells.length * 24px) * cell.weight;
+                background: cell.header ? KitStyle.card.darker(4%) : KitStyle.card;
+                VerticalLayout {
+                    padding: 8px;
+                    Text {
+                        text: cell.text;
+                        font-size: 12.5px;
+                        font-weight: cell.header ? 700 : 400;
+                        color: Palette.foreground;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+        }
+    }
+}

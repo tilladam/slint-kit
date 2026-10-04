@@ -1,4 +1,5 @@
-import { KitStyle, CopyButton, CodeBlock, CodeLine, CommandPalette, PaletteRow } from "@slint-widgets";
+import { KitStyle, CopyButton, CodeBlock, CodeLine, CommandPalette, PaletteRow,
+    ProseBlock, HeadingBlock, QuoteBlock, RuleBlock, TableBlock, TableRowCells } from "@slint-widgets";
 import { Button, Palette } from "std-widgets.slint";
 
 export { KitStyle }
@@ -7,7 +8,7 @@ export component Gallery inherits Window {
     title: "slint-widgets gallery";
     default-font-family: "SF Pro";
     preferred-width: 640px;
-    preferred-height: 460px;
+    preferred-height: root.page == "markdown" ? 760px : 460px;
     background: Palette.background;
 
     out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
@@ -18,6 +19,17 @@ export component Gallery inherits Window {
     in-out property <string> status;
     in-out property <bool> palette-visible;
     in property <[PaletteRow]> palette-entries;
+    // "markdown" shows the markdown blocks; anything else the widgets page.
+    in property <string> page;
+    in property <string> heading;
+    in property <int> heading-level: 1;
+    in property <styled-text> prose;
+    in property <string> prose-raw;
+    in property <styled-text> quote;
+    in property <[TableRowCells]> table3;
+    in property <length> table3-width;
+    in property <[TableRowCells]> table6;
+    in property <length> table6-width;
     callback palette-query(string);
     callback palette-exec(string);
 
@@ -32,7 +44,45 @@ export component Gallery inherits Window {
         }
     }
 
-    VerticalLayout {
+    if root.page == "markdown": VerticalLayout {
+        padding: 20px;
+        spacing: 8px;
+        alignment: start;
+        HeadingBlock {
+            text: root.heading;
+            level: root.heading-level;
+            copy-payload: root.prose-raw;
+            copy-requested(t) => { root.status = "copied " + t.character-count + " characters"; }
+        }
+        ProseBlock {
+            text: root.prose;
+            open-link(l) => { root.status = "link " + l; }
+        }
+        QuoteBlock { text: root.quote; }
+        RuleBlock { }
+        HorizontalLayout {
+            TableBlock {
+                horizontal-stretch: 0;
+                width: min(parent.width, root.table3-width);
+                rows: root.table3;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        HorizontalLayout {
+            TableBlock {
+                horizontal-stretch: 0;
+                width: min(parent.width, root.table6-width);
+                rows: root.table6;
+            }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        Text {
+            text: root.status;
+            color: KitStyle.dim;
+        }
+    }
+
+    if root.page != "markdown": VerticalLayout {
         padding: 20px;
         spacing: 14px;
         alignment: start;

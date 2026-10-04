@@ -44,6 +44,31 @@ pub enum Segment {
     Table(Vec<Vec<TableCell>>),
 }
 
+/// Column widths for a [`Segment::Table`]: each column's share of the table
+/// width (from its longest cell, clamped to 3–60 characters so one verbose
+/// column can't starve the others), normalised to sum to 1.0, plus the
+/// table's estimated natural width in logical px (~7 px per character at a
+/// 12.5 px font, plus cell padding), so a narrow table needn't span the
+/// whole view. Pairs with slint-widgets' `TableBlock`, which gives each
+/// column 24 px plus its share of the remaining width.
+pub fn column_layout(rows: &[Vec<TableCell>]) -> (Vec<f32>, f32) {
+    let col_count = rows.first().map(Vec::len).unwrap_or(0);
+    let chars: Vec<f32> = (0..col_count)
+        .map(|i| {
+            let max_chars = rows
+                .iter()
+                .filter_map(|row| row.get(i))
+                .map(|c| c.text.chars().count())
+                .max()
+                .unwrap_or(1);
+            max_chars.clamp(3, 60) as f32
+        })
+        .collect();
+    let natural_width: f32 = chars.iter().map(|w| w * 7.0 + 18.0).sum();
+    let total: f32 = chars.iter().sum::<f32>().max(1.0);
+    (chars.iter().map(|w| w / total).collect(), natural_width)
+}
+
 pub fn segment_markdown(source: &str) -> Vec<Segment> {
     let mut segments: Vec<Segment> = Vec::new();
     let mut depth = 0usize;
@@ -270,6 +295,25 @@ fn heading_level(level: HeadingLevel) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn column_layout_shares_sum_to_one_and_clamp_short_columns() {
+        let cell = |t: &str| TableCell {
+            text: t.into(),
+            header: false,
+        };
+        let rows = vec![
+            vec![cell("x"), cell("a much longer cell of text here")],
+            vec![cell("y"), cell("z")],
+        ];
+        let (weights, natural) = column_layout(&rows);
+        assert_eq!(weights.len(), 2);
+        assert!((weights.iter().sum::<f32>() - 1.0).abs() < 1e-6);
+        // "x"/"y" clamp up to 3 characters; the long column has 31.
+        assert!((weights[0] - 3.0 / 34.0).abs() < 1e-6);
+        assert_eq!(natural, 3.0 * 7.0 + 18.0 + 31.0 * 7.0 + 18.0);
+        assert_eq!(column_layout(&[]), (vec![], 0.0));
+    }
 
     fn seg(source: &str) -> Vec<Segment> {
         segment_markdown(source)

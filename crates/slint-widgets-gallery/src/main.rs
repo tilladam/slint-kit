@@ -2,6 +2,7 @@
 //! the colour scheme, for screenshots of both.
 
 use md_segments::highlight;
+use md_segments::segmenter::{self, Segment};
 use slint::{Color, ModelRc, VecModel};
 
 slint::include_modules!();
@@ -75,6 +76,71 @@ fn code_lines(code: &str, dark: bool) -> Vec<CodeLine> {
         .collect()
 }
 
+const MARKDOWN: &str = "# Shared markdown blocks\n\n\
+Some **bold** prose with a [link](https://slint.dev) and `inline code`, long enough to wrap \
+onto a second line in the gallery window.\n\n\
+> A quoted line with *emphasis*.\n\n\
+---\n\n\
+| Crate | What it does | Notes |\n|---|---|---|\n\
+| md-segments | Markdown split into renderable segments with syntax highlighting, bare-URL linking and shortcode emoji for any frontend | short |\n\
+| x | y | A deliberately long cell that has to wrap over several lines in a narrow column so the row must grow to fit it all |\n\
+| desktop-notify | Notifications | ok |\n\n\
+| A | B | C | D | E | F |\n|---|---|---|---|---|---|\n\
+| one two three four five six seven | x | eight nine ten eleven twelve thirteen fourteen | y | z | fifteen sixteen seventeen eighteen nineteen twenty |\n\
+| a | b | c | d | twenty-one twenty-two twenty-three twenty-four twenty-five | e |\n";
+
+fn styled(md: &str) -> slint::StyledText {
+    slint::StyledText::from_markdown(md).unwrap_or_else(|_| slint::StyledText::from_plain_text(md))
+}
+
+fn table(rows: &[Vec<segmenter::TableCell>]) -> (ModelRc<TableRowCells>, f32) {
+    let (weights, natural_width) = segmenter::column_layout(rows);
+    let rows: Vec<TableRowCells> = rows
+        .iter()
+        .map(|row| TableRowCells {
+            cells: ModelRc::new(VecModel::from(
+                row.iter()
+                    .enumerate()
+                    .map(|(i, c)| TableCell {
+                        text: c.text.as_str().into(),
+                        header: c.header,
+                        weight: weights.get(i).copied().unwrap_or(1.0),
+                    })
+                    .collect::<Vec<_>>(),
+            )),
+        })
+        .collect();
+    (ModelRc::new(VecModel::from(rows)), natural_width)
+}
+
+fn fill_markdown_page(app: &Gallery) {
+    let mut tables = Vec::new();
+    for segment in segmenter::segment_markdown(MARKDOWN) {
+        match segment {
+            Segment::Heading { level, text } => {
+                app.set_heading(text.into());
+                app.set_heading_level(level.into());
+            }
+            Segment::Prose(md) => {
+                app.set_prose(styled(&md));
+                app.set_prose_raw(md.into());
+            }
+            Segment::Quote(md) => app.set_quote(styled(&md)),
+            Segment::Table(rows) => tables.push(table(&rows)),
+            _ => {}
+        }
+    }
+    let mut tables = tables.into_iter();
+    if let Some((rows, width)) = tables.next() {
+        app.set_table3(rows);
+        app.set_table3_width(width);
+    }
+    if let Some((rows, width)) = tables.next() {
+        app.set_table6(rows);
+        app.set_table6_width(width);
+    }
+}
+
 fn main() -> Result<(), slint::PlatformError> {
     let app = Gallery::new()?;
     app.global::<KitStyle>()
@@ -102,6 +168,10 @@ fn main() -> Result<(), slint::PlatformError> {
             app.set_palette_entries(palette_rows(""));
         }
     });
+    if let Ok(page) = std::env::var("GALLERY_PAGE") {
+        app.set_page(page.into());
+    }
+    fill_markdown_page(&app);
     if std::env::var_os("GALLERY_PALETTE").is_some() {
         app.set_palette_visible(true);
     }
