@@ -3,8 +3,8 @@
 Shared building blocks for desktop apps built with [Slint](https://slint.dev), extracted from
 [slinty-pi](https://github.com/tilladam/slinty-pi) and yapper.
 
-**Status:** early. The crates below exist and are tested in CI; no app uses them from here yet.
-The repository stays private until they have settled.
+**Status:** early. The crates below exist and are tested in CI; no app uses them from here yet,
+and APIs may still change.
 
 ## Rules
 
@@ -14,8 +14,7 @@ The repository stays private until they have settled.
   CI enforces this (`deny.toml` via `cargo deny`, plus a `cargo metadata` check).
 - **Pure and Slint code stay apart.** Crates named `slint-*` depend on Slint. The others are
   toolkit-agnostic, usable from any frontend (slinty-pi's SwiftUI sibling included).
-- **No copied AGPL code.** Ideas seen in AGPL projects are reimplemented
-  from a description, never copied.
+- **No AGPL code.** Everything here is original or comes from MIT-licensed sources.
 
 ## Crates
 
@@ -27,7 +26,7 @@ The repository stays private until they have settled.
 | `desktop-notify` | no | macOS notifications with click-to-open by id, Dock badge, activate (feature `fallback`: notify-rust elsewhere) |
 | `palette-rank` | no | Fuzzy ranking for command palettes (nucleo-matcher) |
 | `slint-model-sync` | yes | Keyed, versioned `VecModel` reconcile that keeps `ListView` scroll positions |
-| `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `CodeBlock`, `CommandPalette` |
+| `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `CodeBlock`, `CommandPalette`, markdown blocks (`ProseBlock`, `HeadingBlock`, `QuoteBlock`, `RuleBlock`, `TableBlock`) |
 | `slint-widgets-gallery` | yes | Not published: shows the widgets; `GALLERY_SCHEME=light\|dark`, `GALLERY_PALETTE=1` |
 
 Planned: `slint-file-drop` (OS file drops with position).
@@ -39,9 +38,6 @@ There are no tags or releases yet: pin a commit.
 ```toml
 md-segments = { git = "https://github.com/tilladam/slint-kit", rev = "<commit>" }
 ```
-
-While the repository is private, cargo needs SSH access to fetch it, e.g.
-`git = "ssh://git@github.com/tilladam/slint-kit"`.
 
 `slint-widgets` is used as a **build-dependency**: pass `slint_widgets::library_paths()` to
 `slint_build::CompilerConfiguration::with_library_paths` and `import { … } from "@slint-widgets"`.
