@@ -1,0 +1,9 @@
+[package]
+name = "emoji-shortcodes"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Emoji name to code point tables (iamcal, joypixels) for chat servers that send emoji by name."
+
+[dependencies]
