@@ -36,11 +36,16 @@ jobs:
 
       - name: Clippy
         if: steps.crates.outputs.present == 'true'
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
       - name: Test
         if: steps.crates.outputs.present == 'true'
-        run: cargo test --workspace
+        run: cargo test --workspace --all-features
+
+      # Optional features (md-segments' syntect, desktop-clipboard's fallback) must stay optional.
+      - name: Build without default features
+        if: steps.crates.outputs.present == 'true'
+        run: cargo check --workspace --all-targets --no-default-features
 
       # The README's rule: no path dependencies outside this repository.
       - name: No path dependencies outside the repo
