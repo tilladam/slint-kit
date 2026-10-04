@@ -194,6 +194,59 @@ mod tests {
         assert!(to_png(invalid).is_err());
     }
 
+    /// A 1x1 PNG whose header claims `width` x `height`: enough for the
+    /// decoder to report dimensions, without allocating the pixels.
+    fn png_claiming(width: u32, height: u32) -> EncodedImage {
+        fn crc32(bytes: &[u8]) -> u32 {
+            let mut crc = !0u32;
+            for &b in bytes {
+                crc ^= u32::from(b);
+                for _ in 0..8 {
+                    crc = (crc >> 1) ^ (0xedb8_8320 & (crc & 1).wrapping_neg());
+                }
+            }
+            !crc
+        }
+        let image = image::RgbaImage::new(1, 1);
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut bytes, ImageFormat::Png).unwrap();
+        let mut bytes = bytes.into_inner();
+        // Signature (8), IHDR length (4), "IHDR" (4), width, height, ...
+        bytes[16..20].copy_from_slice(&width.to_be_bytes());
+        bytes[20..24].copy_from_slice(&height.to_be_bytes());
+        let crc = crc32(&bytes[12..29]);
+        bytes[29..33].copy_from_slice(&crc.to_be_bytes());
+        EncodedImage {
+            bytes,
+            format: ImageFormat::Png,
+        }
+    }
+
+    #[test]
+    fn oversized_encoded_bytes_are_rejected_before_decoding() {
+        let huge = EncodedImage {
+            bytes: vec![0; MAX_CLIPBOARD_BYTES + 1],
+            format: ImageFormat::Png,
+        };
+        assert_eq!(
+            to_png(huge).unwrap_err(),
+            "Clipboard image exceeds the 32 MiB encoded limit"
+        );
+    }
+
+    #[test]
+    fn pixel_count_is_bounded_even_within_the_dimension_limit() {
+        // 8192 x 2049 stays within MAX_DIMENSION per side but exceeds MAX_PIXELS.
+        assert_eq!(
+            to_png(png_claiming(MAX_DIMENSION, 2049)).unwrap_err(),
+            "Clipboard image exceeds the 16 megapixel limit"
+        );
+        // Exactly MAX_PIXELS passes the check; decoding then fails on the
+        // missing pixel data, not on the limit.
+        let err = to_png(png_claiming(4096, 4096)).unwrap_err();
+        assert!(!err.contains("megapixel"), "{err}");
+    }
+
     #[test]
     fn mime_types_follow_the_format() {
         let mime = |format| {

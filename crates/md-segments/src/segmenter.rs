@@ -475,6 +475,32 @@ mod tests {
     }
 
     #[test]
+    fn heading_levels_three_to_six() {
+        let levels: Vec<u8> = seg("### a\n\n#### b\n\n##### c\n\n###### d")
+            .into_iter()
+            .map(|s| match s {
+                Segment::Heading { level, .. } => level,
+                other => panic!("not a heading: {other:?}"),
+            })
+            .collect();
+        assert_eq!(levels, [3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn indented_code_has_no_language() {
+        assert_eq!(
+            seg("Text.\n\n    let x = 1;\n    y();"),
+            vec![
+                Segment::Prose("Text.".into()),
+                Segment::Code {
+                    lang: "".into(),
+                    code: "let x = 1;\ny();".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn code_without_language_tag() {
         let s = "```\nraw\n```";
         assert_eq!(

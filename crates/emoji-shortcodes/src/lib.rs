@@ -112,4 +112,31 @@ mod tests {
         assert_eq!(rc.get("check_mark_button"), rc.get("white_check_mark"));
         assert!(rc.len() > iamcal().len());
     }
+
+    #[test]
+    fn name_and_code_finds_the_smallest_name_with_or_without_fe0f() {
+        // "+1" and "thumbsup" share 1f44d; the smallest name wins.
+        assert_eq!(name_and_code("👍"), ("+1".into(), "1f44d".into()));
+        // Table has 2764-fe0f, input lacks the variation selector.
+        assert_eq!(name_and_code("❤"), ("heart".into(), "2764-fe0f".into()));
+        // Input has a variation selector the table's code doesn't.
+        assert_eq!(name_and_code("👍\u{fe0f}"), ("+1".into(), "1f44d".into()));
+        // Unknown: the emoji itself, with its code.
+        assert_eq!(name_and_code("x"), ("x".into(), "78".into()));
+    }
+
+    #[test]
+    fn emoji_for_resolves_names_and_falls_back_to_the_name() {
+        assert_eq!(emoji_for("+1"), "👍");
+        assert_eq!(emoji_for("heart"), "❤\u{fe0f}");
+        assert_eq!(emoji_for("flag-de"), "🇩🇪");
+        assert_eq!(emoji_for("no_such_emoji"), "no_such_emoji");
+    }
+
+    #[test]
+    fn pairs_owns_every_entry() {
+        let p = pairs(iamcal());
+        assert_eq!(p.len(), iamcal().len());
+        assert!(p.contains(&("+1".into(), "1f44d".into())));
+    }
 }
