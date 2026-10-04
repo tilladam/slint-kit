@@ -30,9 +30,6 @@ ones have settled.
 | `slint-widgets` | yes | `.slint` components: command palette, code block, copy button, tokens, SVG icons |
 | `local-llm` | no | rapid-mlx / llama.cpp / Ollama management; OpenAI-compatible streaming client |
 
-The plan, with sources, phases and acceptance checks, is `docs/plans/shared-crates.md` in
-slinty-pi.
-
 ## Using a crate
 
 Until crates are published, depend on a tag:
