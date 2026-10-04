@@ -1,0 +1,60 @@
+import { KitStyle, CopyButton, CodeBlock, CodeLine } from "@slint-widgets";
+import { Palette } from "std-widgets.slint";
+
+export { KitStyle }
+
+export component Gallery inherits Window {
+    title: "slint-widgets gallery";
+    default-font-family: "SF Pro";
+    preferred-width: 640px;
+    preferred-height: 300px;
+    background: Palette.background;
+
+    out property <bool> dark: Palette.color-scheme == ColorScheme.dark;
+    in property <string> code;
+    in property <[CodeLine]> code-lines;
+    in property <color> code-background;
+    property <string> last-copied;
+
+    // "light" or "dark" forces Palette's colour scheme. A function, not a
+    // `changed` handler: those run later, so `dark` would still be stale
+    // when Rust reads it right after.
+    public function force-scheme(scheme: string) {
+        if (scheme == "dark") {
+            Palette.color-scheme = ColorScheme.dark;
+        } else if (scheme == "light") {
+            Palette.color-scheme = ColorScheme.light;
+        }
+    }
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 14px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Text {
+                text: "CopyButton";
+                color: Palette.foreground;
+                vertical-alignment: center;
+            }
+            CopyButton {
+                payload: "copied text";
+                copy-requested(t) => { root.last-copied = t; }
+            }
+            Text {
+                text: root.last-copied == "" ? "" : "copied: " + root.last-copied;
+                color: KitStyle.dim;
+                vertical-alignment: center;
+            }
+        }
+        CodeBlock {
+            lang: "rust";
+            code: root.code;
+            lines: root.code-lines;
+            code-background: root.code-background;
+            copy-requested(t) => { root.last-copied = t.character-count + " characters of code"; }
+        }
+    }
+}

@@ -1,0 +1,11 @@
+[package]
+name = "slint-widgets"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared .slint components (copy button, code block) and a KitStyle global, used as a Slint component library."
+
+# Only .slint files and their path: use it as a build-dependency and hand
+# library_paths() to slint_build::CompilerConfiguration::with_library_paths.
+[dependencies]

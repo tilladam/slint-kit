@@ -1,0 +1,78 @@
+import { KitStyle } from "style.slint";
+import { CopyButton } from "copy-button.slint";
+
+// One coloured run of a highlighted line (md-segments' highlight output).
+export struct ColoredSpan {
+    text: string,
+    color: color,
+}
+
+export struct CodeLine {
+    spans: [ColoredSpan],
+}
+
+// A code card: language label, copy button, and highlighted lines that pan
+// horizontally instead of clipping. `code` is what the copy button copies;
+// `code-background` should match the highlighting theme (md-segments'
+// theme_background).
+export component CodeBlock inherits Rectangle {
+    in property <string> lang;
+    in property <string> code;
+    in property <[CodeLine]> lines;
+    in property <color> code-background: #2b303b;
+    callback copy-requested(string);
+
+    background: code-background;
+    border-radius: KitStyle.radius;
+    border-width: 1px;
+    border-color: KitStyle.hairline;
+    clip: true;
+
+    VerticalLayout {
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 8px;
+            padding-top: 6px;
+            height: 28px;
+            Text {
+                text: root.lang == "" ? "code" : root.lang;
+                font-size: 10px;
+                font-family: KitStyle.mono-font;
+                color: KitStyle.faint;
+                vertical-alignment: center;
+            }
+            Rectangle { horizontal-stretch: 1; }
+            CopyButton {
+                payload: root.code;
+                copy-requested(t) => { root.copy-requested(t); }
+            }
+        }
+        // The Flickable has no intrinsic size, so its height comes from the
+        // line stack's preferred height (content-driven, no ancestor-width
+        // binding — safe inside a ListView).
+        Flickable {
+            height: lines-box.preferred-height;
+            content-width: max(self.width, lines-box.preferred-width);
+            lines-box := VerticalLayout {
+                padding: 12px;
+                padding-top: 2px;
+                alignment: start;
+                for line in root.lines: HorizontalLayout {
+                    alignment: start;
+                    // Keeps blank lines at full line height.
+                    if line.spans.length == 0: Text {
+                        text: " ";
+                        font-family: KitStyle.mono-font;
+                        font-size: KitStyle.code-font-size;
+                    }
+                    for span in line.spans: Text {
+                        text: span.text;
+                        color: span.color;
+                        font-family: KitStyle.mono-font;
+                        font-size: KitStyle.code-font-size;
+                    }
+                }
+            }
+        }
+    }
+}

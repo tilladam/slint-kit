@@ -1,0 +1,19 @@
+import { Palette } from "std-widgets.slint";
+
+// Shared sizes and colours. Defaults follow std-widgets' Palette, so they
+// track light and dark mode; an app overrides a property by setting it
+// (which replaces the default binding). Re-export KitStyle from the app's
+// main .slint file to reach it from Rust.
+export global KitStyle {
+    in-out property <length> radius: 9px;
+    // Menlo exists on every Mac; .slint can't pick per platform, and the
+    // generic "monospace" isn't resolved. Elsewhere set it from Rust, e.g. to
+    // slint_widgets::default_mono_font().
+    in-out property <string> mono-font: "Menlo";
+    in-out property <length> code-font-size: 12.5px;
+    in-out property <color> dim: Palette.foreground.transparentize(0.45);
+    in-out property <color> faint: Palette.foreground.transparentize(0.65);
+    in-out property <brush> hairline: Palette.border.transparentize(0.5);
+    in-out property <brush> hover: Palette.alternate-background;
+    in-out property <brush> accent: Palette.accent-background;
+}

@@ -1,0 +1,19 @@
+[package]
+name = "slint-widgets-gallery"
+version = "0.0.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Shows slint-widgets' components; used to check them by screenshot (GALLERY_SCHEME=light|dark)."
+
+[dependencies]
+md-segments = { path = "../md-segments" }
+slint-widgets = { path = "../slint-widgets" }
+# Software renderer on every platform: light to build, and pixel parity with
+# an app's Skia build is not the point of the gallery.
+slint = { version = "1.18", default-features = false, features = ["std", "compat-1-18", "backend-winit", "renderer-software"] }
+
+[build-dependencies]
+slint-build = "1.18"
+slint-widgets = { path = "../slint-widgets" }

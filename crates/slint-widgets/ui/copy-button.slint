@@ -1,0 +1,35 @@
+import { KitStyle } from "style.slint";
+
+// A small "copy" button: emits copy-requested(payload) and shows a check
+// mark for 1.4 s. Copying itself (the clipboard) is the app's job.
+export component CopyButton inherits Rectangle {
+    in property <string> payload;
+    callback copy-requested(string);
+    property <bool> copied: false;
+
+    width: 34px;
+    height: 20px;
+    border-radius: 5px;
+    background: touch.has-hover ? KitStyle.hover : transparent;
+
+    touch := TouchArea {
+        clicked => {
+            root.copy-requested(root.payload);
+            root.copied = true;
+            reset.running = true;
+        }
+    }
+    Text {
+        text: root.copied ? "✓" : "copy";
+        font-size: 10px;
+        color: root.copied ? KitStyle.accent : KitStyle.dim;
+    }
+    reset := Timer {
+        interval: 1400ms;
+        running: false;
+        triggered => {
+            root.copied = false;
+            self.running = false;
+        }
+    }
+}
