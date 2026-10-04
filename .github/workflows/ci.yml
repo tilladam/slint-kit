@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cargo can't run on a workspace without members; skip until the first crate lands.
+      - name: Look for crates
+        id: crates
+        run: |
+          if compgen -G "crates/*/Cargo.toml" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No crates yet; skipping cargo steps."
+          fi
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.crates.outputs.present == 'true'
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        if: steps.crates.outputs.present == 'true'
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        if: steps.crates.outputs.present == 'true'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        if: steps.crates.outputs.present == 'true'
+        run: cargo test --workspace
+
+      # The README's rule: no path dependencies outside this repository.
+      - name: No path dependencies outside the repo
+        if: steps.crates.outputs.present == 'true'
+        run: |
+          cargo metadata --format-version 1 | jq -e --arg root "$PWD/" '
+            [.packages[] | select(.source == null) | .manifest_path
+             | select(startswith($root) | not)] as $outside
+            | if ($outside | length) == 0 then true
+              else ("Path dependencies outside the repo: " + ($outside | join(", ")) | halt_error(1)) end'
+
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Look for crates
+        id: crates
+        run: |
+          if compgen -G "crates/*/Cargo.toml" > /dev/null; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Licences and sources per deny.toml (crates.io only, no GPL/AGPL-only crates).
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        if: steps.crates.outputs.present == 'true'
+        with:
+          command: check licenses sources bans

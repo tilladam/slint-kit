@@ -1,0 +1,39 @@
+# Dependency policy for slint-kit, checked in CI with `cargo deny check`.
+#
+# The rule (README.md): crates here are MIT and depend only on Slint or other
+# public crates. Sources: crates.io only — no git or alternative registries.
+# Path dependencies outside this repo are caught by a separate CI step, since
+# cargo-deny doesn't look at them.
+
+[graph]
+all-features = true
+
+[licenses]
+# Permissive licences, plus MPL-2.0 (file-level copyleft, fine as a dependency).
+# LicenseRef-Slint-Royalty-free-2.0 lets Slint's
+# "GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0"
+# expression resolve to a non-GPL branch. GPL/AGPL-only crates are rejected.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "CC0-1.0",
+    "MPL-2.0",
+    "LicenseRef-Slint-Royalty-free-2.0",
+]
+confidence-threshold = 0.9
+# The workspace starts small; not every allowed licence is in use yet.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

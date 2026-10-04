@@ -1,0 +1,10 @@
+[workspace]
+resolver = "3"
+# Crates land here one phase at a time (see README.md). Cargo can't run on a
+# workspace without members, so CI skips its cargo steps until the first one.
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/tilladam/slint-kit"
