@@ -110,7 +110,11 @@ export component CommandPalette inherits Rectangle {
                             padding-right: 8px;
                             spacing: 8px;
 
+                            // Fixed, centred icon column so labels line up
+                            // whatever the glyph's width.
                             Text {
+                                width: 14px;
+                                horizontal-alignment: center;
                                 text: row.icon;
                                 font-size: 11px;
                                 color: Palette.foreground.transparentize(0.5);
