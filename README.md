@@ -30,8 +30,7 @@ The repository stays private until they have settled.
 | `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `CodeBlock`, `CommandPalette` |
 | `slint-widgets-gallery` | yes | Not published: shows the widgets; `GALLERY_SCHEME=light\|dark`, `GALLERY_PALETTE=1` |
 
-Planned: `slint-file-drop` (OS file drops with position) and `local-llm` (rapid-mlx / llama.cpp /
-Ollama management, OpenAI-compatible streaming client).
+Planned: `slint-file-drop` (OS file drops with position).
 
 ## Using a crate
 
