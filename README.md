@@ -26,7 +26,7 @@ and APIs may still change.
 | `desktop-notify` | no | macOS notifications with click-to-open by id, Dock badge, activate (feature `fallback`: notify-rust elsewhere) |
 | `palette-rank` | no | Fuzzy ranking for command palettes (nucleo-matcher) |
 | `slint-model-sync` | yes | Keyed, versioned `VecModel` reconcile that keeps `ListView` scroll positions |
-| `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `CodeBlock`, `CommandPalette`, markdown blocks (`ProseBlock`, `HeadingBlock`, `QuoteBlock`, `RuleBlock`, `TableBlock`) |
+| `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `ConfirmButton`, `CodeBlock`, `CommandPalette`, markdown blocks (`ProseBlock`, `HeadingBlock`, `QuoteBlock`, `RuleBlock`, `TableBlock`) |
 | `slint-widgets-gallery` | yes | Not published: shows the widgets; `GALLERY_SCHEME=light\|dark`, `GALLERY_PALETTE=1` |
 
 Planned: `slint-file-drop` (OS file drops with position).

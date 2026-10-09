@@ -1,4 +1,4 @@
-import { KitStyle, CopyButton, CodeBlock, CodeLine, CommandPalette, PaletteRow,
+import { KitStyle, CopyButton, ConfirmButton, CodeBlock, CodeLine, CommandPalette, PaletteRow,
     ProseBlock, HeadingBlock, QuoteBlock, RuleBlock, TableBlock, TableRowCells } from "@slint-widgets";
 import { Button, Palette } from "std-widgets.slint";
 
@@ -18,6 +18,8 @@ export component Gallery inherits Window {
     // What the last copy or palette run did.
     in-out property <string> status;
     in-out property <bool> palette-visible;
+    // How often a ConfirmButton fired confirmed().
+    in-out property <int> confirmations;
     in property <[PaletteRow]> palette-entries;
     // "markdown" shows the markdown blocks; anything else the widgets page.
     in property <string> page;
@@ -100,6 +102,37 @@ export component Gallery inherits Window {
             }
             Text {
                 text: root.status;
+                color: KitStyle.dim;
+                vertical-alignment: center;
+            }
+        }
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: start;
+            Text {
+                text: "ConfirmButton";
+                color: Palette.foreground;
+                vertical-alignment: center;
+            }
+            // slinty-pi's session delete button.
+            ConfirmButton {
+                text: "×";
+                font-size: 14px;
+                confirmed => { root.confirmations += 1; }
+            }
+            // slinty-pi's tree fork button.
+            ConfirmButton {
+                text: "fork";
+                confirm-text: "fork here?";
+                text-color: Palette.foreground.transparentize(0.3);
+                confirm-text-color: Palette.accent-background;
+                idle-width: 46px;
+                confirm-width: 74px;
+                outlined: true;
+                confirmed => { root.confirmations += 1; }
+            }
+            Text {
+                text: "confirmed " + root.confirmations + "×";
                 color: KitStyle.dim;
                 vertical-alignment: center;
             }

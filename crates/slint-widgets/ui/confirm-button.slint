@@ -1,0 +1,67 @@
+import { Palette } from "std-widgets.slint";
+import { KitStyle } from "style.slint";
+
+// A button for actions that need a second click (delete, fork, discard):
+// the first click arms it, showing `confirm-text` at `confirm-width`; a
+// second click within `timeout` emits confirmed(), otherwise it disarms.
+//
+// Widths are explicit (not taken from the label) so the width animates
+// between the two states.
+export component ConfirmButton inherits Rectangle {
+    in property <string> text;
+    in property <string> confirm-text: "sure?";
+    in property <length> font-size: 10px;
+    in property <length> confirm-font-size: 10px;
+    in property <brush> text-color: Palette.foreground.transparentize(0.4);
+    // Defaults to red, for destructive actions.
+    in property <brush> confirm-text-color: #d35454;
+    in property <length> idle-width: 20px;
+    in property <length> confirm-width: 54px;
+    // A hairline outline, so a text label reads as a control.
+    in property <bool> outlined: false;
+    in property <duration> timeout: 2500ms;
+    out property <bool> armed: false;
+    callback confirmed();
+
+    width: root.armed ? root.confirm-width : root.idle-width;
+    height: 20px;
+    border-radius: 5px;
+    border-width: root.outlined ? 1px : 0px;
+    border-color: KitStyle.hairline;
+    // Darker than KitStyle.hover: these usually sit on a row that already
+    // shows the hover colour.
+    background: touch.has-hover ? KitStyle.hover.darker(10%) : transparent;
+    animate width { duration: 120ms; }
+
+    accessible-role: button;
+    accessible-label: root.armed ? root.confirm-text : root.text;
+    accessible-action-default => { root.click(); }
+
+    function click() {
+        if (root.armed) {
+            root.armed = false;
+            reset.running = false;
+            root.confirmed();
+        } else {
+            root.armed = true;
+            reset.running = true;
+        }
+    }
+
+    Text {
+        text: root.armed ? root.confirm-text : root.text;
+        font-size: root.armed ? root.confirm-font-size : root.font-size;
+        color: root.armed ? root.confirm-text-color : root.text-color;
+    }
+    touch := TouchArea {
+        clicked => { root.click(); }
+    }
+    reset := Timer {
+        interval: root.timeout;
+        running: false;
+        triggered => {
+            root.armed = false;
+            self.running = false;
+        }
+    }
+}
