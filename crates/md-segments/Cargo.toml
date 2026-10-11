@@ -14,4 +14,6 @@ highlight = ["dep:syntect"]
 [dependencies]
 emoji-shortcodes = { path = "../emoji-shortcodes", version = "0.1.0" }
 pulldown-cmark = "0.13.4"
-syntect = { version = "5.3.0", default-features = false, features = ["default-fancy"], optional = true }
+# Only bundled syntax/theme assets and the Rust regex engine are needed;
+# YAML/plist loaders and HTML output are unused by the span highlighter.
+syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "regex-fancy"], optional = true }
