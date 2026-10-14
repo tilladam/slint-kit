@@ -69,6 +69,8 @@ pub fn column_layout(rows: &[Vec<TableCell>]) -> (Vec<f32>, f32) {
     (chars.iter().map(|w| w / total).collect(), natural_width)
 }
 
+/// Split blocks into display segments. Prose and quotes include any reference
+/// definitions needed to render their links independently.
 pub fn segment_markdown(source: &str) -> Vec<Segment> {
     let mut segments: Vec<Segment> = Vec::new();
     let mut depth = 0usize;
@@ -98,18 +100,40 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
     let mut block: Option<Block> = None;
 
     let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TABLES;
-    let parser = Parser::new_ext(source, options).into_offset_iter();
+    let parser = Parser::new_ext(source, options);
+    let mut used_definitions = Vec::new();
+    let mut parser = parser.into_offset_iter();
 
-    let flush_prose = |segments: &mut Vec<Segment>, start: &mut Option<usize>, end: usize| {
+    let flush_prose = |segments: &mut Vec<Segment>,
+                       start: &mut Option<usize>,
+                       end: usize,
+                       definitions: &mut Vec<std::ops::Range<usize>>| {
         if let Some(s) = start.take() {
             let text = source[s..end].trim();
             if !text.is_empty() {
-                segments.push(Segment::Prose(text.to_string()));
+                segments.push(Segment::Prose(with_definitions(
+                    text.to_string(),
+                    source,
+                    definitions,
+                )));
             }
         }
     };
 
-    for (event, range) in parser {
+    while let Some((event, range)) = parser.next() {
+        if let Event::Start(Tag::Link { id, link_type, .. } | Tag::Image { id, link_type, .. }) =
+            &event
+            && matches!(
+                link_type,
+                pulldown_cmark::LinkType::Reference
+                    | pulldown_cmark::LinkType::Collapsed
+                    | pulldown_cmark::LinkType::Shortcut
+            )
+            && let Some(definition) = parser.reference_definitions().get(id)
+            && !used_definitions.contains(&definition.span)
+        {
+            used_definitions.push(definition.span.clone());
+        }
         match event {
             Event::Start(tag) => {
                 // `Table` opens a top-level block like Heading/Code below, but
@@ -131,14 +155,24 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
                 if depth == 0 {
                     block = Some(match &tag {
                         Tag::Heading { level, .. } => {
-                            flush_prose(&mut segments, &mut prose_start, range.start);
+                            flush_prose(
+                                &mut segments,
+                                &mut prose_start,
+                                range.start,
+                                &mut used_definitions,
+                            );
                             Block::Heading {
                                 level: heading_level(*level),
                                 text: String::new(),
                             }
                         }
                         Tag::CodeBlock(kind) => {
-                            flush_prose(&mut segments, &mut prose_start, range.start);
+                            flush_prose(
+                                &mut segments,
+                                &mut prose_start,
+                                range.start,
+                                &mut used_definitions,
+                            );
                             let lang = match kind {
                                 CodeBlockKind::Fenced(info) => info
                                     .split_whitespace()
@@ -153,7 +187,12 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
                             }
                         }
                         Tag::Table(_) => {
-                            flush_prose(&mut segments, &mut prose_start, range.start);
+                            flush_prose(
+                                &mut segments,
+                                &mut prose_start,
+                                range.start,
+                                &mut used_definitions,
+                            );
                             Block::Table {
                                 in_head: false,
                                 rows: Vec::new(),
@@ -162,7 +201,12 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
                             }
                         }
                         Tag::BlockQuote(_) => {
-                            flush_prose(&mut segments, &mut prose_start, range.start);
+                            flush_prose(
+                                &mut segments,
+                                &mut prose_start,
+                                range.start,
+                                &mut used_definitions,
+                            );
                             Block::Quote {
                                 range: range.clone(),
                             }
@@ -216,7 +260,11 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
                         Some(Block::Quote { range }) => {
                             let text = strip_quote_markers(&source[range]);
                             if !text.is_empty() {
-                                segments.push(Segment::Quote(text));
+                                segments.push(Segment::Quote(with_definitions(
+                                    text,
+                                    source,
+                                    &mut used_definitions,
+                                )));
                             }
                         }
                         Some(Block::Table { rows, .. }) => {
@@ -226,9 +274,15 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
                             // One Prose segment per top-level block, so rows
                             // (and thus row padding) fall on block boundaries.
                             let _ = tag_end;
-                            flush_prose(&mut segments, &mut prose_start, range.end);
+                            flush_prose(
+                                &mut segments,
+                                &mut prose_start,
+                                range.end,
+                                &mut used_definitions,
+                            );
                         }
                     }
+                    used_definitions.clear();
                 }
             }
             Event::Text(t) => match block.as_mut() {
@@ -246,7 +300,12 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
                 // A leaf event: only a top-level `---` (depth 0) becomes a
                 // rule row; inside a quote it stays part of that block.
                 if depth == 0 {
-                    flush_prose(&mut segments, &mut prose_start, range.start);
+                    flush_prose(
+                        &mut segments,
+                        &mut prose_start,
+                        range.start,
+                        &mut used_definitions,
+                    );
                     segments.push(Segment::Rule);
                 }
             }
@@ -261,8 +320,27 @@ pub fn segment_markdown(source: &str) -> Vec<Segment> {
             _ => {}
         }
     }
-    flush_prose(&mut segments, &mut prose_start, source.len());
+    flush_prose(
+        &mut segments,
+        &mut prose_start,
+        source.len(),
+        &mut used_definitions,
+    );
     segments
+}
+
+// Keep each segment independently parseable without rewriting the user's links.
+fn with_definitions(
+    mut text: String,
+    source: &str,
+    definitions: &mut Vec<std::ops::Range<usize>>,
+) -> String {
+    definitions.sort_by_key(|r| r.start);
+    for range in definitions.drain(..) {
+        text.push_str("\n\n");
+        text.push_str(&strip_quote_markers(&source[range]));
+    }
+    text
 }
 
 /// Strip the leading `>` marker (and one following space) from every line of
@@ -295,6 +373,40 @@ fn heading_level(level: HeadingLevel) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reference_links_are_self_contained_in_each_segment() {
+        let source = "[First][DOC]\n\n[doc][] and [doc] and ![image][pic]\n\n> [quoted][doc]\n\n[doc]: <https://example.org/a(b)> \"A title\"\n[pic]: image.png";
+        for segment in seg(source) {
+            let md = match segment {
+                Segment::Prose(md) | Segment::Quote(md) => md,
+                _ => continue,
+            };
+            assert!(crate::inline::links(&md).contains(&"https://example.org/a(b)".to_string()));
+            assert_eq!(crate::inline::linkify(&md), md);
+            assert_eq!(
+                crate::inline::emoji_shortcodes(&md, emoji_shortcodes::iamcal()),
+                md
+            );
+        }
+    }
+
+    #[test]
+    fn quoted_and_streamed_reference_definitions_resolve() {
+        let before = "[docs][d]";
+        assert!(crate::inline::links(before).is_empty());
+        for source in [
+            "[docs][d]\n\n[d]: https://example.org",
+            "> [docs][d]\n>\n> [d]: https://example.org",
+        ] {
+            let segments = seg(source);
+            let md = match &segments[0] {
+                Segment::Prose(md) | Segment::Quote(md) => md,
+                other => panic!("{other:?}"),
+            };
+            assert_eq!(crate::inline::links(md), ["https://example.org"]);
+        }
+    }
 
     #[test]
     fn column_layout_shares_sum_to_one_and_clamp_short_columns() {

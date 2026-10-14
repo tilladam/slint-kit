@@ -1,0 +1,34 @@
+import { CopyButton, ConfirmButton, CommandPalette, PaletteRow } from "@slint-widgets";
+export component ModelTest inherits Window {
+    width: 200px;
+    height: 120px;
+    in property <[string]> rows;
+    VerticalLayout {
+        for row in root.rows: Text { text: row; accessible-label: row; }
+    }
+}
+export component Buttons inherits Window {
+    width: 300px;
+    height: 80px;
+    out property <int> copies: 0;
+    out property <int> confirmations: 0;
+    out property <bool> armed <=> confirm.armed;
+    public function focus-copy() { copy.focus(); }
+    public function focus-confirm() { confirm.focus(); }
+    HorizontalLayout {
+        copy := CopyButton { payload: "payload"; copy-requested(t) => { root.copies += 1; } }
+        confirm := ConfirmButton { text: "delete"; confirmed => { root.confirmations += 1; } }
+    }
+}
+export component PaletteTest inherits Window {
+    width: 640px;
+    height: 480px;
+    in property <[PaletteRow]> entries;
+    in-out property <string> executed;
+    out property <int> closes: 0;
+    CommandPalette {
+        entries: root.entries;
+        exec(id) => { root.executed = id; }
+        close => { root.closes += 1; }
+    }
+}

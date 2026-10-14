@@ -7,6 +7,32 @@ export component CopyButton inherits Rectangle {
     callback copy-requested(string);
     property <bool> copied: false;
 
+    forward-focus: keyboard;
+    accessible-role: button;
+    accessible-label: "Copy";
+    accessible-action-default => { root.copy(); }
+    border-width: keyboard.has-focus ? 1px : 0px;
+    border-color: KitStyle.accent;
+
+    function copy() {
+        keyboard.focus();
+        root.copy-requested(root.payload);
+        root.copied = true;
+        reset.running = false;
+        reset.running = true;
+    }
+
+    keyboard := FocusScope {
+        width: 0px;
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.copy();
+                return accept;
+            }
+            reject
+        }
+    }
+
     width: 34px;
     height: 20px;
     border-radius: 5px;
@@ -14,9 +40,7 @@ export component CopyButton inherits Rectangle {
 
     touch := TouchArea {
         clicked => {
-            root.copy-requested(root.payload);
-            root.copied = true;
-            reset.running = true;
+            root.copy();
         }
     }
     Text {

@@ -4,8 +4,8 @@
 //!
 //! Each row has a key (its identity) and a version (anything that changes
 //! when the row must be rebuilt: an edit, a flag, a neighbour that changes
-//! its rendering). [`KeyedModel::apply`] walks the current and the wanted
-//! lists in order:
+//! its rendering). [`KeyedModel::apply`] retains a longest ordered sequence
+//! of existing keys and reconciles the remaining rows:
 //!
 //! - same key, same version: untouched;
 //! - same key, new version: one `set_row_data`;
@@ -13,16 +13,28 @@
 //! - a new key: one `insert`, at its place;
 //! - a key that moved: removed and inserted again where it now belongs.
 //!
-//! Rows are only built (the `build` callback) for inserts and updates.
+//! Rows are only built for new keys and changed versions; moves reuse row data.
+//! Sequence selection is O(n log n); VecModel inserts/removes can still shift
+//! O(n) rows per operation. Models handed to consumers are read-only.
+//!
+//! ```
+//! use slint_model_sync::KeyedModel;
+//! use slint::Model;
+//! let mut rows = KeyedModel::<&str, String>::new();
+//! rows.apply(&[("a", 0), ("b", 0)], |key| key.to_string());
+//! let handle = rows.model_rc();
+//! rows.apply(&[("b", 0), ("a", 0)], |_| panic!("unchanged row"));
+//! assert_eq!(handle.row_data(0).as_deref(), Some("b"));
+//! ```
 //!
 //! Generalised from yapper's timeline (`crates/yapper-ui/src/timeline.rs`,
 //! `Timeline::apply`).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::rc::Rc;
 
-use slint::{Model, ModelRc, VecModel};
+use slint::{Model, ModelRc, ModelTracker, VecModel};
 
 /// What [`KeyedModel::apply`] did.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -33,8 +45,28 @@ pub struct Changes {
 }
 
 /// A [`VecModel`] plus the key and version of each of its rows.
+struct ReadOnly<T> {
+    inner: VecModel<T>,
+}
+
+impl<T: Clone + 'static> Model for ReadOnly<T> {
+    type Data = T;
+    fn row_count(&self) -> usize {
+        self.inner.row_count()
+    }
+    fn row_data(&self, row: usize) -> Option<T> {
+        self.inner.row_data(row)
+    }
+    fn model_tracker(&self) -> &dyn ModelTracker {
+        self.inner.model_tracker()
+    }
+    fn set_row_data(&self, _row: usize, _data: T) {}
+}
+
+/// Owns keyed, versioned rows and exposes a stable read-only Slint model.
+/// Update rows through [`apply`](Self::apply); version changes invalidate data.
 pub struct KeyedModel<K, T> {
-    model: Rc<VecModel<T>>,
+    model: Rc<ReadOnly<T>>,
     entries: Vec<(K, u64)>,
 }
 
@@ -44,7 +76,9 @@ where
 {
     fn default() -> Self {
         Self {
-            model: Rc::new(VecModel::default()),
+            model: Rc::new(ReadOnly {
+                inner: VecModel::default(),
+            }),
             entries: Vec::new(),
         }
     }
@@ -64,10 +98,10 @@ where
         ModelRc::from(self.model.clone())
     }
 
-    /// The underlying model, e.g. for `row_data`. Change rows only through
-    /// [`apply`](Self::apply), or keys and rows drift apart.
-    pub fn model(&self) -> &Rc<VecModel<T>> {
-        &self.model
+    /// A read-only view for `row_data`, `row_count`, and iteration.
+    /// Writes, including through [`model_rc`](Self::model_rc), are unsupported.
+    pub fn model(&self) -> &impl Model<Data = T> {
+        self.model.as_ref()
     }
 
     /// Keys in row order.
@@ -82,61 +116,58 @@ where
 
     /// Brings the model to `want` (keys in row order, each with its
     /// version). `build` makes the row for a key; it is called only for
-    /// inserted and updated rows. Keys in `want` must be unique.
+    /// new keys and changed versions. Moves with unchanged versions reuse rows.
+    /// Keys in `want` must be unique (duplicates panic before mutation).
+    /// Counts describe actual insert/remove/set operations, including moves.
     pub fn apply(&mut self, want: &[(K, u64)], mut build: impl FnMut(&K) -> T) -> Changes {
-        debug_assert_eq!(
+        assert_eq!(
             want.iter().map(|(k, _)| k).collect::<HashSet<_>>().len(),
             want.len(),
             "keys in `want` must be unique"
         );
+        let positions: HashMap<&K, usize> = self
+            .entries
+            .iter()
+            .enumerate()
+            .map(|(i, (k, _))| (k, i))
+            .collect();
+        let sequence: Vec<usize> = want
+            .iter()
+            .filter_map(|(k, _)| positions.get(k).copied())
+            .collect();
+        let keep = retained_positions(&sequence);
         let wanted: HashSet<&K> = want.iter().map(|(k, _)| k).collect();
-        let current: HashSet<K> = self.entries.iter().map(|(k, _)| k.clone()).collect();
+        let mut moved = HashMap::new();
         let mut changes = Changes::default();
-        let mut i = 0; // position in self.entries / the model
-        let mut j = 0; // position in want
-        while i < self.entries.len() || j < want.len() {
-            match (self.entries.get(i), want.get(j)) {
-                (Some(cur), Some(w)) if cur.0 == w.0 => {
-                    if cur.1 != w.1 {
-                        self.model.set_row_data(i, build(&w.0));
-                        self.entries[i] = w.clone();
-                        changes.updated += 1;
-                    }
-                    i += 1;
-                    j += 1;
+        for i in (0..self.entries.len()).rev() {
+            if !keep.contains(&i) {
+                let (key, version) = &self.entries[i];
+                if wanted.contains(key) {
+                    moved.insert(
+                        key.clone(),
+                        (*version, self.model.inner.row_data(i).expect("tracked row")),
+                    );
                 }
-                (Some(cur), _) if !wanted.contains(&cur.0) => {
-                    self.model.remove(i);
-                    self.entries.remove(i);
-                    changes.removed += 1;
+                self.model.inner.remove(i);
+                self.entries.remove(i);
+                changes.removed += 1;
+            }
+        }
+        for (i, (key, version)) in want.iter().enumerate() {
+            if self.entries.get(i).is_some_and(|(k, _)| k == key) {
+                if self.entries[i].1 != *version {
+                    self.model.inner.set_row_data(i, build(key));
+                    self.entries[i].1 = *version;
+                    changes.updated += 1;
                 }
-                (None, Some(w)) => {
-                    self.model.insert(i, build(&w.0));
-                    self.entries.insert(i, w.clone());
-                    changes.inserted += 1;
-                    i += 1;
-                    j += 1;
-                }
-                (Some(_), Some(w)) if !current.contains(&w.0) => {
-                    self.model.insert(i, build(&w.0));
-                    self.entries.insert(i, w.clone());
-                    changes.inserted += 1;
-                    i += 1;
-                    j += 1;
-                }
-                (Some(_), Some(_)) => {
-                    // Same keys in a different order (a move): drop the
-                    // current row, it is inserted again where it belongs.
-                    self.model.remove(i);
-                    self.entries.remove(i);
-                    changes.removed += 1;
-                }
-                (Some(_), None) => {
-                    self.model.remove(i);
-                    self.entries.remove(i);
-                    changes.removed += 1;
-                }
-                (None, None) => break,
+            } else {
+                let row = match moved.remove(key) {
+                    Some((old_version, row)) if old_version == *version => row,
+                    _ => build(key),
+                };
+                self.model.inner.insert(i, row);
+                self.entries.insert(i, (key.clone(), *version));
+                changes.inserted += 1;
             }
         }
         debug_assert_eq!(self.entries.len(), self.model.row_count());
@@ -144,9 +175,75 @@ where
     }
 }
 
+// Patience sorting. Replacing each tail with the smallest old position gives
+// a deterministic LIS, favoring earlier old rows when sequences have equal length.
+fn retained_positions(sequence: &[usize]) -> HashSet<usize> {
+    let mut tails: Vec<usize> = Vec::new();
+    let mut previous = vec![None; sequence.len()];
+    for (i, &position) in sequence.iter().enumerate() {
+        let slot = tails.partition_point(|&j| sequence[j] < position);
+        if slot > 0 {
+            previous[i] = Some(tails[slot - 1]);
+        }
+        if slot == tails.len() {
+            tails.push(i);
+        } else {
+            tails[slot] = i;
+        }
+    }
+    let mut retained = HashSet::new();
+    let mut cursor = tails.last().copied();
+    while let Some(i) = cursor {
+        retained.insert(sequence[i]);
+        cursor = previous[i];
+    }
+    retained
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adjacent_swap_reuses_rows_and_keeps_the_suffix() {
+        let mut m = Rows::new();
+        sync(&mut m, &[("a", 0), ("b", 0), ("c", 0)]);
+        let changes = m.apply(&want(&[("b", 0), ("a", 0), ("c", 0)]), |_| {
+            panic!("unchanged row rebuilt")
+        });
+        assert_eq!(changes, ch(1, 1, 0));
+        assert_eq!(m.model().iter().collect::<Vec<_>>(), ["b@0", "a@0", "c@0"]);
+    }
+
+    #[test]
+    fn consumer_cannot_modify_the_model() {
+        let mut m = Rows::new();
+        sync(&mut m, &[("a", 0)]);
+        let handle = m.model_rc();
+        handle.set_row_data(0, "bad".into());
+        m.model().set_row_data(0, "bad".into());
+        assert!(handle.as_any().downcast_ref::<VecModel<String>>().is_none());
+        assert!(handle.insert_row(0, "bad".into()).is_err());
+        assert!(handle.remove_row(0).is_err());
+        assert_eq!(handle.row_data(0).as_deref(), Some("a@0"));
+    }
+
+    #[test]
+    fn reverse_reuses_unchanged_rows_but_rebuilds_changed_versions() {
+        let mut m = Rows::new();
+        sync(&mut m, &[("a", 0), ("b", 0), ("c", 0), ("d", 0)]);
+        let mut built = Vec::new();
+        let c = m.apply(&want(&[("d", 0), ("c", 1), ("b", 0), ("a", 0)]), |k| {
+            built.push(k.clone());
+            format!("{k}@1")
+        });
+        assert_eq!(c, ch(3, 3, 0));
+        assert_eq!(built, ["c"]);
+        assert_eq!(
+            m.model().iter().collect::<Vec<_>>(),
+            ["d@0", "c@1", "b@0", "a@0"]
+        );
+    }
 
     type Rows = KeyedModel<String, String>;
 

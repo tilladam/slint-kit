@@ -20,6 +20,11 @@ fn parse(tsv: &'static str) -> impl Iterator<Item = (&'static str, &'static str)
 }
 
 /// iamcal names (Mattermost).
+///
+/// ```
+/// assert_eq!(emoji_shortcodes::iamcal().get("+1"), Some(&"1f44d"));
+/// assert_eq!(emoji_shortcodes::emoji_for("+1"), "👍");
+/// ```
 pub fn iamcal() -> &'static Table {
     static TABLE: OnceLock<Table> = OnceLock::new();
     TABLE.get_or_init(|| parse(include_str!("../data/iamcal.tsv")).collect())
@@ -94,6 +99,28 @@ pub fn emoji_for(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn all_data_is_valid_and_joypixels_wins_collisions() {
+        for data in [
+            include_str!("../data/iamcal.tsv"),
+            include_str!("../data/joypixels.tsv"),
+        ] {
+            for line in data.lines() {
+                let (name, code) = line.split_once('\t').expect("TSV entry");
+                assert!(!name.is_empty());
+                let decoded = code
+                    .split('-')
+                    .map(|hex| u32::from_str_radix(hex, 16).ok().and_then(char::from_u32))
+                    .collect::<Option<String>>();
+                assert!(decoded.is_some_and(|s| !s.is_empty()), "{name}: {code}");
+            }
+        }
+        for (name, code) in parse(include_str!("../data/joypixels.tsv")) {
+            assert_eq!(rocketchat().get(name), Some(&code));
+        }
+        assert_ne!(iamcal().get("thumbsup"), rocketchat().get("thumbsup"));
+    }
 
     #[test]
     fn tables() {

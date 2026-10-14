@@ -24,6 +24,30 @@ export component CommandPalette inherits Rectangle {
     // empty: only Esc closes.
     in property <string> close-shortcut-key;
     property <int> selected: 0;
+    property <int> entry-count: root.entries.length;
+    changed entry-count => {
+        root.selected = max(0, min(root.selected, root.entry-count - 1));
+        root.reveal-selection();
+    }
+    changed entries => {
+        root.selected = 0;
+        root.reveal-selection();
+    }
+    changed selected => { root.reveal-selection(); }
+
+    function reveal-selection() {
+        if (root.entries.length == 0) {
+            results.content-y = 0px;
+            return;
+        }
+        if (root.selected * 32px + results.content-y < 0px) {
+            results.content-y = -root.selected * 32px;
+        }
+        if ((root.selected + 1) * 32px + results.content-y > results.visible-height) {
+            results.content-y = results.visible-height - (root.selected + 1) * 32px;
+        }
+        results.content-y = min(0px, max(results.visible-height - root.entries.length * 32px, results.content-y));
+    }
     callback query-changed(string);
     callback exec(string);
     callback close();
@@ -99,9 +123,14 @@ export component CommandPalette inherits Rectangle {
                     color: Palette.foreground.transparentize(0.5);
                 }
 
-                ListView {
+                results := ListView {
                     for row[i] in root.entries: Rectangle {
                         height: 32px;
+                        accessible-role: list-item;
+                        accessible-label: row.label;
+                        accessible-item-index: i;
+                        accessible-item-selected: i == root.selected;
+                        accessible-action-default => { root.selected = i; root.exec(row.id); }
                         border-radius: 5px;
                         background: i == root.selected ? Palette.accent-background.transparentize(0.85) : transparent;
 

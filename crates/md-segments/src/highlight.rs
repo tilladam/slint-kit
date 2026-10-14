@@ -7,8 +7,8 @@
 //! SwiftUI: the same shape per `RowRecord`), unlike routing colored code
 //! through a markdown renderer, which would need every span escaped and
 //! indentation faked to survive markdown parsing. Copy actions use the
-//! original code string directly; nothing here is lossy or needs
-//! unescaping. Every span's color is pre-resolved to a concrete `(u8, u8,
+//! original code string directly. Display spans expand tabs and normalize
+//! CRLF line endings. Every span's color is a concrete `(u8, u8,
 //! u8)` RGB triple — a consumer needs no syntect theme/asset data of its own.
 
 use std::sync::OnceLock;
@@ -65,6 +65,9 @@ pub fn theme_background(dark: bool) -> (u8, u8, u8) {
 }
 
 /// Highlight `code` into one [`CodeLine`] per source line.
+/// Tabs expand to four spaces and CRLF becomes LF. Line endings are excluded
+/// from spans. A parsing error renders that line in the theme's foreground
+/// and restarts highlighting on the next line.
 pub fn highlight_lines(code: &str, lang: &str, dark: bool) -> Vec<CodeLine> {
     let assets = assets();
     let syntax = assets
@@ -75,23 +78,30 @@ pub fn highlight_lines(code: &str, lang: &str, dark: bool) -> Vec<CodeLine> {
     let mut highlighter = HighlightLines::new(syntax, theme);
 
     // Slint's `Text` renders tabs as tofu glyphs, not tab stops.
-    let code = code.replace('\t', "    ");
-    code.lines()
+    let mut code = code.replace("\r\n", "\n").replace('\t', "    ");
+    if !code.is_empty() && !code.ends_with('\n') {
+        code.push('\n');
+    }
+    code.split_inclusive('\n')
         .map(|line| {
             let spans = match highlighter.highlight_line(line, &assets.syntaxes) {
                 Ok(spans) => spans
                     .into_iter()
+                    .map(|(style, text)| (style, text.strip_suffix('\n').unwrap_or(text)))
                     .filter(|(_, text)| !text.is_empty())
                     .map(|(style, text)| colored_span(style, text))
                     .collect(),
-                Err(_) => vec![ColoredSpan {
-                    text: line.to_string(),
-                    color: theme
-                        .settings
-                        .foreground
-                        .map(|c| (c.r, c.g, c.b))
-                        .unwrap_or(if dark { (192, 197, 206) } else { (36, 41, 46) }),
-                }],
+                Err(_) => {
+                    highlighter = HighlightLines::new(syntax, theme);
+                    vec![ColoredSpan {
+                        text: line.trim_end_matches('\n').to_string(),
+                        color: theme
+                            .settings
+                            .foreground
+                            .map(|c| (c.r, c.g, c.b))
+                            .unwrap_or(if dark { (192, 197, 206) } else { (36, 41, 46) }),
+                    }]
+                }
             };
             CodeLine { spans }
         })
@@ -109,6 +119,44 @@ fn colored_span(style: Style, text: &str) -> ColoredSpan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn comments_end_at_the_line_boundary() {
+        for (lang, source) in [
+            ("python", "# comment\nx = 1"),
+            ("javascript", "// comment\nlet x = 1;"),
+            ("rust", "// comment\nlet x = 1;"),
+        ] {
+            let lines = highlight_lines(source, lang, true);
+            let comment = lines[0].spans[0].color;
+            assert!(lines[1].spans.iter().any(|s| s.color != comment), "{lang}");
+            assert_eq!(lines, highlight_lines(&format!("{source}\n"), lang, true));
+        }
+    }
+
+    #[test]
+    fn multiline_strings_close_and_line_endings_preserve_display_text() {
+        let source = "x = \"\"\"first\r\nsecond\r\n\"\"\"\r\nx = 1\r\n\r\n\tend";
+        let lines = highlight_lines(source, "python", false);
+        let rebuilt: Vec<String> = lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.text.as_str()).collect())
+            .collect();
+        assert_eq!(
+            rebuilt,
+            [
+                "x = \"\"\"first",
+                "second",
+                "\"\"\"",
+                "x = 1",
+                "",
+                "    end"
+            ]
+        );
+        assert_eq!(lines[3], highlight_lines("x = 1", "python", false)[0]);
+        assert!(lines[4].spans.is_empty());
+        assert!(highlight_lines("", "python", false).is_empty());
+    }
 
     #[test]
     fn rust_code_produces_colored_spans() {

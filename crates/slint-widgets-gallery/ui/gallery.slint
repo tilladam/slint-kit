@@ -84,73 +84,76 @@ export component Gallery inherits Window {
         }
     }
 
-    if root.page != "markdown": VerticalLayout {
-        padding: 20px;
-        spacing: 14px;
-        alignment: start;
-        HorizontalLayout {
-            spacing: 10px;
+    Rectangle {
+        visible: root.page != "markdown";
+        VerticalLayout {
+            padding: 20px;
+            spacing: 14px;
             alignment: start;
-            Text {
-                text: "CopyButton";
-                color: Palette.foreground;
-                vertical-alignment: center;
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                Text {
+                    text: "CopyButton";
+                    color: Palette.foreground;
+                    vertical-alignment: center;
+                }
+                CopyButton {
+                    payload: "copied text";
+                    copy-requested(t) => { root.status = "copied: " + t; }
+                }
+                Text {
+                    text: root.status;
+                    color: KitStyle.dim;
+                    vertical-alignment: center;
+                }
             }
-            CopyButton {
-                payload: "copied text";
-                copy-requested(t) => { root.status = "copied: " + t; }
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                Text {
+                    text: "ConfirmButton";
+                    color: Palette.foreground;
+                    vertical-alignment: center;
+                }
+                // slinty-pi's session delete button.
+                ConfirmButton {
+                    text: "×";
+                    font-size: 14px;
+                    confirmed => { root.confirmations += 1; }
+                }
+                // slinty-pi's tree fork button.
+                ConfirmButton {
+                    text: "fork";
+                    confirm-text: "fork here?";
+                    text-color: Palette.foreground.transparentize(0.3);
+                    confirm-text-color: Palette.accent-background;
+                    idle-width: 46px;
+                    confirm-width: 74px;
+                    outlined: true;
+                    confirmed => { root.confirmations += 1; }
+                }
+                Text {
+                    text: "confirmed " + root.confirmations + "×";
+                    color: KitStyle.dim;
+                    vertical-alignment: center;
+                }
             }
-            Text {
-                text: root.status;
-                color: KitStyle.dim;
-                vertical-alignment: center;
+            HorizontalLayout {
+                spacing: 10px;
+                alignment: start;
+                palette-trigger := Button {
+                    text: "Command palette";
+                    clicked => { root.palette-visible = true; }
+                }
             }
-        }
-        HorizontalLayout {
-            spacing: 10px;
-            alignment: start;
-            Text {
-                text: "ConfirmButton";
-                color: Palette.foreground;
-                vertical-alignment: center;
+            CodeBlock {
+                lang: "rust";
+                code: root.code;
+                lines: root.code-lines;
+                code-background: root.code-background;
+                copy-requested(t) => { root.status = "copied " + t.character-count + " characters of code"; }
             }
-            // slinty-pi's session delete button.
-            ConfirmButton {
-                text: "×";
-                font-size: 14px;
-                confirmed => { root.confirmations += 1; }
-            }
-            // slinty-pi's tree fork button.
-            ConfirmButton {
-                text: "fork";
-                confirm-text: "fork here?";
-                text-color: Palette.foreground.transparentize(0.3);
-                confirm-text-color: Palette.accent-background;
-                idle-width: 46px;
-                confirm-width: 74px;
-                outlined: true;
-                confirmed => { root.confirmations += 1; }
-            }
-            Text {
-                text: "confirmed " + root.confirmations + "×";
-                color: KitStyle.dim;
-                vertical-alignment: center;
-            }
-        }
-        HorizontalLayout {
-            spacing: 10px;
-            alignment: start;
-            Button {
-                text: "Command palette";
-                clicked => { root.palette-visible = true; }
-            }
-        }
-        CodeBlock {
-            lang: "rust";
-            code: root.code;
-            lines: root.code-lines;
-            code-background: root.code-background;
-            copy-requested(t) => { root.status = "copied " + t.character-count + " characters of code"; }
         }
     }
 
@@ -162,10 +165,11 @@ export component Gallery inherits Window {
         entries: root.palette-entries;
         placeholder-text: "Type a command, session, or action…";
         close-shortcut-key: "p";
-        close => { root.palette-visible = false; }
+        close => { root.palette-visible = false; palette-trigger.focus(); }
         query-changed(q) => { root.palette-query(q); }
         exec(id) => {
             root.palette-visible = false;
+            palette-trigger.focus();
             root.palette-exec(id);
         }
     }

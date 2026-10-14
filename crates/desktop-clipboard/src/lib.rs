@@ -2,6 +2,20 @@
 //! original encoded bytes (PNG, TIFF or JPEG). Reading only snapshots the
 //! bytes; decoding happens later, bounded, off the UI thread ([`to_png`]).
 //! Never ask AppKit or arboard to decode an unbounded image on paste.
+//! With `decoding-fallback` off macOS, arboard decodes before limits can be
+//! checked; opt in only when this tradeoff is acceptable.
+//!
+//! ```no_run
+//! use desktop_clipboard::{ClipboardAttachment, clipboard_attachment, to_png};
+//! if let Some(ClipboardAttachment::Image(encoded)) = clipboard_attachment()? {
+//!     std::thread::spawn(move || {
+//!         let png = to_png(encoded)?;
+//!         // Send these bytes back to the UI through a channel.
+//!         Ok::<_, desktop_clipboard::Error>(png)
+//!     });
+//! }
+//! # Ok::<(), desktop_clipboard::Error>(())
+//! ```
 //!
 //! Extracted from yapper (`crates/yapper-ui/src/attachment_input.rs` and
 //! `attachments.rs`).
@@ -9,6 +23,80 @@
 use std::path::PathBuf;
 
 pub use image::ImageFormat;
+
+/// Clipboard acquisition or image conversion failed.
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum Error {
+    Clipboard {
+        operation: &'static str,
+        source: arboard::Error,
+    },
+    Image {
+        operation: &'static str,
+        source: image::ImageError,
+    },
+    EncodedLimit,
+    PixelLimit,
+    Unreadable,
+    Changed,
+    InvalidPixels,
+}
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Clipboard { operation, source } => write!(f, "Clipboard {operation}: {source}"),
+            Self::Image { operation, source } => write!(f, "Clipboard image {operation}: {source}"),
+            Self::EncodedLimit => f.write_str("Clipboard image exceeds the 32 MiB encoded limit"),
+            Self::PixelLimit => {
+                f.write_str("Clipboard image exceeds the pixel or decoded allocation limit")
+            }
+            Self::Unreadable => f.write_str("Clipboard image is unreadable"),
+            Self::Changed => f.write_str("Clipboard changed during paste; try again"),
+            Self::InvalidPixels => f.write_str("Clipboard image has an unexpected size"),
+        }
+    }
+}
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Clipboard { source, .. } => Some(source),
+            Self::Image { source, .. } => Some(source),
+            _ => None,
+        }
+    }
+}
+
+trait ClipboardSource {
+    fn files(&mut self) -> Result<Vec<PathBuf>, Error>;
+    fn image(&mut self) -> Result<Option<EncodedImage>, Error>;
+}
+struct NativeSource(arboard::Clipboard);
+impl ClipboardSource for NativeSource {
+    fn files(&mut self) -> Result<Vec<PathBuf>, Error> {
+        match self.0.get().file_list() {
+            Ok(files) => Ok(files),
+            Err(arboard::Error::ContentNotAvailable) => Ok(Vec::new()),
+            Err(source) => Err(Error::Clipboard {
+                operation: "reading files",
+                source,
+            }),
+        }
+    }
+    fn image(&mut self) -> Result<Option<EncodedImage>, Error> {
+        clipboard_image()
+    }
+}
+fn attachment(source: &mut impl ClipboardSource) -> Result<Option<ClipboardAttachment>, Error> {
+    let files = source.files()?;
+    if !files.is_empty() {
+        return Ok(Some(ClipboardAttachment::Files(files)));
+    }
+    source
+        .image()
+        .map(|image| image.map(ClipboardAttachment::Image))
+}
 
 /// Alternate clipboard representations are not independent attachments.
 #[derive(Debug)]
@@ -20,14 +108,12 @@ pub enum ClipboardAttachment {
 /// `None` lets a text input handle ordinary text with its native
 /// selection/undo. A recognized but unreadable representation is an error,
 /// not a text fallback.
-pub fn clipboard_attachment() -> Result<Option<ClipboardAttachment>, String> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    match clipboard.get().file_list() {
-        Ok(files) if !files.is_empty() => return Ok(Some(ClipboardAttachment::Files(files))),
-        Ok(_) | Err(arboard::Error::ContentNotAvailable) => {}
-        Err(e) => return Err(e.to_string()),
-    }
-    clipboard_image().map(|image| image.map(ClipboardAttachment::Image))
+pub fn clipboard_attachment() -> Result<Option<ClipboardAttachment>, Error> {
+    let clipboard = arboard::Clipboard::new().map_err(|source| Error::Clipboard {
+        operation: "opening",
+        source,
+    })?;
+    attachment(&mut NativeSource(clipboard))
 }
 
 /// Clipboard image bytes as they were on the clipboard.
@@ -55,16 +141,16 @@ pub const MAX_DECODE_BYTES: u64 = 128 * 1024 * 1024;
 
 /// The clipboard's image, if it has one. macOS reads the encoded pasteboard
 /// data; elsewhere see the `decoding-fallback` feature.
-pub fn clipboard_image() -> Result<Option<EncodedImage>, String> {
+pub fn clipboard_image() -> Result<Option<EncodedImage>, Error> {
     platform::clipboard_image()
 }
 
 /// Decodes `encoded` within the limits above and re-encodes it as PNG.
 /// Meant for a worker thread, not the UI thread.
-pub fn to_png(encoded: EncodedImage) -> Result<Vec<u8>, String> {
+pub fn to_png(encoded: EncodedImage) -> Result<Vec<u8>, Error> {
     use image::{ImageDecoder, ImageReader};
     if encoded.bytes.len() > MAX_CLIPBOARD_BYTES {
-        return Err("Clipboard image exceeds the 32 MiB encoded limit".into());
+        return Err(Error::EncodedLimit);
     }
     let mut reader = ImageReader::with_format(std::io::Cursor::new(encoded.bytes), encoded.format);
     let mut limits = image::Limits::default();
@@ -72,26 +158,33 @@ pub fn to_png(encoded: EncodedImage) -> Result<Vec<u8>, String> {
     limits.max_image_height = Some(MAX_DIMENSION);
     limits.max_alloc = Some(MAX_DECODE_BYTES);
     reader.limits(limits);
-    let decoder = reader
-        .into_decoder()
-        .map_err(|e| format!("Clipboard image: {e}"))?;
+    let decoder = reader.into_decoder().map_err(|source| Error::Image {
+        operation: "reading header",
+        source,
+    })?;
     let (w, h) = decoder.dimensions();
     if u64::from(w) * u64::from(h) > MAX_PIXELS || decoder.total_bytes() > MAX_DECODE_BYTES {
-        return Err("Clipboard image exceeds the 16 megapixel limit".into());
+        return Err(Error::PixelLimit);
     }
-    let image = image::DynamicImage::from_decoder(decoder).map_err(|e| e.to_string())?;
+    let image = image::DynamicImage::from_decoder(decoder).map_err(|source| Error::Image {
+        operation: "decoding",
+        source,
+    })?;
     let mut png = std::io::Cursor::new(Vec::new());
     image
         .write_to(&mut png, ImageFormat::Png)
-        .map_err(|e| e.to_string())?;
+        .map_err(|source| Error::Image {
+            operation: "encoding PNG",
+            source,
+        })?;
     Ok(png.into_inner())
 }
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{EncodedImage, ImageFormat, MAX_CLIPBOARD_BYTES};
+    use super::{EncodedImage, Error, ImageFormat, MAX_CLIPBOARD_BYTES};
 
-    pub fn clipboard_image() -> Result<Option<EncodedImage>, String> {
+    pub fn clipboard_image() -> Result<Option<EncodedImage>, Error> {
         use objc2_app_kit::NSPasteboard;
         use objc2_foundation::NSString;
         let board = NSPasteboard::generalPasteboard();
@@ -109,17 +202,15 @@ mod platform {
             {
                 continue;
             }
-            let data = board
-                .dataForType(&kind)
-                .ok_or("Clipboard image is unreadable")?;
+            let data = board.dataForType(&kind).ok_or(Error::Unreadable)?;
             if data.length() > MAX_CLIPBOARD_BYTES {
-                return Err("Clipboard image exceeds the 32 MiB encoded limit".into());
+                return Err(Error::EncodedLimit);
             }
             // SAFETY: immutable retained NSData is alive during the copy. No
             // mutable alias is made and no pointer escapes this call.
             let bytes = unsafe { data.as_bytes_unchecked() }.to_vec();
             if board.changeCount() != change {
-                return Err("Clipboard changed during paste; try again".into());
+                return Err(Error::Changed);
             }
             return Ok(Some(EncodedImage { bytes, format }));
         }
@@ -129,10 +220,10 @@ mod platform {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::EncodedImage;
+    use super::{EncodedImage, Error};
 
     #[cfg(not(feature = "decoding-fallback"))]
-    pub fn clipboard_image() -> Result<Option<EncodedImage>, String> {
+    pub fn clipboard_image() -> Result<Option<EncodedImage>, Error> {
         // No pre-decode native snapshot adapter yet. File lists and native text
         // paste remain supported; do not invoke an unbounded image decoder.
         Ok(None)
@@ -141,24 +232,36 @@ mod platform {
     /// arboard has already decoded the image to RGBA by the time the size
     /// can be checked; this only refuses to keep or re-encode a huge one.
     #[cfg(feature = "decoding-fallback")]
-    pub fn clipboard_image() -> Result<Option<EncodedImage>, String> {
+    pub fn clipboard_image() -> Result<Option<EncodedImage>, Error> {
         use super::{ImageFormat, MAX_DIMENSION, MAX_PIXELS};
-        let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
+        let mut clipboard = arboard::Clipboard::new().map_err(|source| Error::Clipboard {
+            operation: "opening",
+            source,
+        })?;
         let data = match clipboard.get_image() {
             Ok(data) => data,
             Err(arboard::Error::ContentNotAvailable) => return Ok(None),
-            Err(e) => return Err(e.to_string()),
+            Err(source) => {
+                return Err(Error::Clipboard {
+                    operation: "reading image",
+                    source,
+                });
+            }
         };
-        let (w, h) = (data.width as u32, data.height as u32);
+        let w = u32::try_from(data.width).map_err(|_| Error::PixelLimit)?;
+        let h = u32::try_from(data.height).map_err(|_| Error::PixelLimit)?;
         if w > MAX_DIMENSION || h > MAX_DIMENSION || u64::from(w) * u64::from(h) > MAX_PIXELS {
-            return Err("Clipboard image exceeds the 16 megapixel limit".into());
+            return Err(Error::PixelLimit);
         }
         let image = image::RgbaImage::from_raw(w, h, data.bytes.into_owned())
-            .ok_or("Clipboard image has an unexpected size")?;
+            .ok_or(Error::InvalidPixels)?;
         let mut png = std::io::Cursor::new(Vec::new());
         image
             .write_to(&mut png, ImageFormat::Png)
-            .map_err(|e| e.to_string())?;
+            .map_err(|source| Error::Image {
+                operation: "encoding PNG",
+                source,
+            })?;
         Ok(Some(EncodedImage {
             bytes: png.into_inner(),
             format: ImageFormat::Png,
@@ -169,6 +272,52 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Source {
+        files: Result<Vec<PathBuf>, Error>,
+        image: Option<EncodedImage>,
+        image_reads: usize,
+    }
+    impl ClipboardSource for Source {
+        fn files(&mut self) -> Result<Vec<PathBuf>, Error> {
+            std::mem::replace(&mut self.files, Ok(Vec::new()))
+        }
+        fn image(&mut self) -> Result<Option<EncodedImage>, Error> {
+            self.image_reads += 1;
+            Ok(self.image.take())
+        }
+    }
+    #[test]
+    fn file_priority_and_errors_do_not_read_the_image() {
+        let mut source = Source {
+            files: Ok(vec![PathBuf::from("file.txt")]),
+            image: Some(encoded(1, 1)),
+            image_reads: 0,
+        };
+        assert!(matches!(
+            attachment(&mut source),
+            Ok(Some(ClipboardAttachment::Files(_)))
+        ));
+        assert_eq!(source.image_reads, 0);
+        source.files = Err(Error::Unreadable);
+        assert!(matches!(attachment(&mut source), Err(Error::Unreadable)));
+        assert_eq!(source.image_reads, 0);
+        assert!(matches!(
+            attachment(&mut source),
+            Ok(Some(ClipboardAttachment::Image(_)))
+        ));
+        assert!(attachment(&mut source).unwrap().is_none());
+    }
+
+    #[test]
+    fn conversion_error_preserves_its_source() {
+        let err = to_png(EncodedImage {
+            bytes: vec![],
+            format: ImageFormat::Png,
+        })
+        .unwrap_err();
+        assert!(std::error::Error::source(&err).is_some());
+    }
 
     fn encoded(width: u32, height: u32) -> EncodedImage {
         let image = image::RgbaImage::from_pixel(width, height, image::Rgba([20, 40, 60, 255]));
@@ -228,23 +377,20 @@ mod tests {
             bytes: vec![0; MAX_CLIPBOARD_BYTES + 1],
             format: ImageFormat::Png,
         };
-        assert_eq!(
-            to_png(huge).unwrap_err(),
-            "Clipboard image exceeds the 32 MiB encoded limit"
-        );
+        assert!(matches!(to_png(huge), Err(Error::EncodedLimit)));
     }
 
     #[test]
     fn pixel_count_is_bounded_even_within_the_dimension_limit() {
         // 8192 x 2049 stays within MAX_DIMENSION per side but exceeds MAX_PIXELS.
-        assert_eq!(
-            to_png(png_claiming(MAX_DIMENSION, 2049)).unwrap_err(),
-            "Clipboard image exceeds the 16 megapixel limit"
-        );
+        assert!(matches!(
+            to_png(png_claiming(MAX_DIMENSION, 2049)),
+            Err(Error::PixelLimit)
+        ));
         // Exactly MAX_PIXELS passes the check; decoding then fails on the
         // missing pixel data, not on the limit.
         let err = to_png(png_claiming(4096, 4096)).unwrap_err();
-        assert!(!err.contains("megapixel"), "{err}");
+        assert!(matches!(err, Error::Image { .. }), "{err}");
     }
 
     #[test]

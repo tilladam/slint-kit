@@ -27,12 +27,23 @@ impl AsRef<str> for Candidate {
 /// `entries` ranked against `query`, most relevant first, at most `limit`.
 /// `text` gives what an entry is matched on (e.g. its label and detail
 /// joined by a space).
+/// Equal scores retain input order. Matching is synchronous; for large catalogs,
+/// call from a worker thread. A zero limit returns immediately without matching.
+///
+/// ```
+/// let entries = ["Open file", "Close window"];
+/// let matches = palette_rank::rank(&entries, "opfi", 10, |s| s.to_string());
+/// assert_eq!(matches, ["Open file"]);
+/// ```
 pub fn rank<T: Clone>(
     entries: &[T],
     query: &str,
     limit: usize,
     text: impl Fn(&T) -> String,
 ) -> Vec<T> {
+    if limit == 0 {
+        return Vec::new();
+    }
     if query.trim().is_empty() {
         return entries.iter().take(limit).cloned().collect();
     }
@@ -53,6 +64,19 @@ pub fn rank<T: Clone>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalization_ties_and_limits() {
+        let entries = [entry("a", "Café"), entry("b", "Café"), entry("c", "Other")];
+        assert_eq!(
+            r(&entries, "CAFE").iter().map(|e| e.id).collect::<Vec<_>>(),
+            ["a", "b"]
+        );
+        assert_eq!(rank(&entries, "cafe", 1, |e| e.label.into())[0].id, "a");
+        assert!(rank(&entries, "cafe", 0, |_| panic!("text evaluated")).is_empty());
+        assert!(rank::<Entry>(&[], "cafe", 10, |_| panic!("text evaluated")).is_empty());
+        assert_eq!(r(&entries, "  \n "), entries);
+    }
 
     #[derive(Clone, Debug, PartialEq)]
     struct Entry {

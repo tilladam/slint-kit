@@ -9,8 +9,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
 
@@ -47,20 +50,42 @@ jobs:
         if: steps.crates.outputs.present == 'true'
         run: cargo test --workspace --all-features
 
-      # Optional features (md-segments' syntect, desktop-clipboard's fallback) must stay optional.
-      - name: Build without default features
+      # Check separately: the gallery otherwise re-enables md-segments defaults.
+      - name: Test without default features
         if: steps.crates.outputs.present == 'true'
-        run: cargo check --workspace --all-targets --no-default-features
+        run: |
+          cargo test -p md-segments --no-default-features
+          cargo test -p desktop-clipboard --no-default-features
+          cargo test -p desktop-notify --no-default-features
+
+      - name: Documentation
+        if: steps.crates.outputs.present == 'true'
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          cargo doc --workspace --all-features --no-deps
+          cargo doc -p md-segments --no-default-features --no-deps
+          cargo doc -p desktop-clipboard --no-default-features --no-deps
+          cargo doc -p desktop-notify --no-default-features --no-deps
+
+      - name: Pure examples
+        run: |
+          cargo run -p palette-rank --example rank
+          cargo run -p slint-model-sync --example reconcile
 
       # The README's rule: no path dependencies outside this repository.
       - name: No path dependencies outside the repo
         if: steps.crates.outputs.present == 'true'
         run: |
-          cargo metadata --format-version 1 | jq -e --arg root "$PWD/" '
-            [.packages[] | select(.source == null) | .manifest_path
-             | select(startswith($root) | not)] as $outside
-            | if ($outside | length) == 0 then true
-              else ("Path dependencies outside the repo: " + ($outside | join(", ")) | halt_error(1)) end'
+          python - <<'PY'
+          import json, pathlib, subprocess
+          root = pathlib.Path.cwd().resolve()
+          metadata = json.loads(subprocess.check_output(["cargo", "metadata", "--format-version", "1"]))
+          outside = [p["manifest_path"] for p in metadata["packages"]
+                     if p["source"] is None and not pathlib.Path(p["manifest_path"]).resolve().is_relative_to(root)]
+          if outside:
+              raise SystemExit("Path dependencies outside the repo: " + ", ".join(outside))
+          PY
 
   deny:
     runs-on: ubuntu-latest

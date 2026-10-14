@@ -23,11 +23,29 @@ export component ConfirmButton inherits Rectangle {
     out property <bool> armed: false;
     callback confirmed();
 
+    forward-focus: keyboard;
+    keyboard := FocusScope {
+        width: 0px;
+        focus-changed-event => {
+            if (!self.has-focus) {
+                root.armed = false;
+                reset.running = false;
+            }
+        }
+        key-pressed(event) => {
+            if (event.text == Key.Space || event.text == Key.Return) {
+                root.click();
+                return accept;
+            }
+            reject
+        }
+    }
+
     width: root.armed ? root.confirm-width : root.idle-width;
     height: 20px;
     border-radius: 5px;
-    border-width: root.outlined ? 1px : 0px;
-    border-color: KitStyle.hairline;
+    border-width: root.outlined || keyboard.has-focus ? 1px : 0px;
+    border-color: keyboard.has-focus ? KitStyle.accent : KitStyle.hairline;
     // Darker than KitStyle.hover: these usually sit on a row that already
     // shows the hover colour.
     background: touch.has-hover ? KitStyle.hover.darker(10%) : transparent;
@@ -38,6 +56,7 @@ export component ConfirmButton inherits Rectangle {
     accessible-action-default => { root.click(); }
 
     function click() {
+        keyboard.focus();
         if (root.armed) {
             root.armed = false;
             reset.running = false;
