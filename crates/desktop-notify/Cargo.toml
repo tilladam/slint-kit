@@ -4,6 +4,12 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/desktop-notify"
+keywords = ["notifications", "desktop", "macos"]
+categories = ["os", "gui"]
+include = ["src/**", "examples/**", "README.md", "LICENSE"]
 description = "Desktop notifications with click-to-open by id, the macOS Dock badge, and bringing the app to the front."
 
 [features]

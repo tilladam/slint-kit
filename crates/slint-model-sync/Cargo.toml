@@ -4,6 +4,12 @@ version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
+readme = "README.md"
+documentation = "https://docs.rs/slint-model-sync"
+keywords = ["slint", "model", "reconciliation"]
+categories = ["gui", "data-structures"]
+include = ["src/**", "examples/**", "README.md", "LICENSE"]
 description = "Bring a Slint VecModel to a wanted list of keyed, versioned rows with minimal inserts, removes and updates, so ListView keeps its scroll position."
 
 [dependencies]

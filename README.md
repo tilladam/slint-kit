@@ -20,13 +20,13 @@ and APIs may still change.
 
 | Crate | Slint? | What it does |
 |---|---|---|
-| `md-segments` | no | Markdown → segments (prose, headings, code, quotes, tables), syntect highlighting (feature `highlight`), bare-URL linking and `:shortcode:` emoji |
-| `emoji-shortcodes` | no | `:shortcode:` tables (iamcal, joypixels) |
-| `desktop-clipboard` | no | Clipboard file lists, or images as their original encoded bytes; bounded `to_png` (feature `decoding-fallback` off macOS) |
-| `desktop-notify` | no | macOS notifications with click-to-open by id, Dock badge, activate (feature `fallback`: notify-rust elsewhere) |
-| `palette-rank` | no | Fuzzy ranking for command palettes (nucleo-matcher) |
-| `slint-model-sync` | yes | Keyed, versioned `VecModel` reconcile that keeps `ListView` scroll positions |
-| `slint-widgets` | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `ConfirmButton`, `CodeBlock`, `CommandPalette`, markdown blocks (`ProseBlock`, `HeadingBlock`, `QuoteBlock`, `RuleBlock`, `TableBlock`) |
+| [`md-segments`](crates/md-segments/README.md) | no | Markdown → segments (prose, headings, code, quotes, tables), syntect highlighting (feature `highlight`), bare-URL linking and `:shortcode:` emoji |
+| [`emoji-shortcodes`](crates/emoji-shortcodes/README.md) | no | `:shortcode:` tables (iamcal, joypixels) |
+| [`desktop-clipboard`](crates/desktop-clipboard/README.md) | no | Clipboard file lists, or images as their original encoded bytes; bounded `to_png` (feature `decoding-fallback` off macOS) |
+| [`desktop-notify`](crates/desktop-notify/README.md) | no | macOS notifications with click-to-open by id, Dock badge, activate (feature `fallback`: notify-rust elsewhere) |
+| [`palette-rank`](crates/palette-rank/README.md) | no | Fuzzy ranking for command palettes (nucleo-matcher) |
+| [`slint-model-sync`](crates/slint-model-sync/README.md) | yes | Keyed, versioned `VecModel` reconcile that keeps `ListView` scroll positions |
+| [`slint-widgets`](crates/slint-widgets/README.md) | yes | `.slint` component library (`@slint-widgets`): `KitStyle`, `CopyButton`, `ConfirmButton`, `CodeBlock`, `CommandPalette`, markdown blocks (`ProseBlock`, `HeadingBlock`, `QuoteBlock`, `RuleBlock`, `TableBlock`) |
 | `slint-widgets-gallery` | yes | Not published: shows the widgets; `GALLERY_SCHEME=light\|dark`, `GALLERY_PALETTE=1` |
 | `slint-widgets-tests` | yes | Not published: headless interaction and model integration tests |
 
@@ -34,7 +34,8 @@ Planned: `slint-file-drop` (OS file drops with position).
 
 ## Using a crate
 
-There are no tags or releases yet: pin a commit.
+The libraries are prepared for an initial `0.1.0` release. Until they are
+published on crates.io, pin a commit:
 
 ```toml
 md-segments = { git = "https://github.com/tilladam/slint-kit", rev = "<commit>" }
@@ -44,6 +45,10 @@ md-segments = { git = "https://github.com/tilladam/slint-kit", rev = "<commit>" 
 `slint_build::CompilerConfiguration::with_library_paths` and `import { … } from "@slint-widgets"`.
 
 Slint crates here follow the Slint minor version their consumers use (currently 1.18).
+
+Each library has a crate-specific README with setup and API examples. See the
+[release guide](RELEASING.md) for packaging checks and publication order, and
+the [changelog](CHANGELOG.md) for the initial release contents.
 
 ## Examples and API contracts
 

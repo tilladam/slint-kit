@@ -73,6 +73,14 @@ jobs:
           cargo run -p palette-rank --example rank
           cargo run -p slint-model-sync --example reconcile
 
+      # Package together so unpublished workspace dependencies can be verified.
+      - name: Verify release archives
+        if: steps.crates.outputs.present == 'true'
+        run: >-
+          cargo package --workspace
+          --exclude slint-widgets-gallery --exclude slint-widgets-tests
+          --all-features
+
       # The README's rule: no path dependencies outside this repository.
       - name: No path dependencies outside the repo
         if: steps.crates.outputs.present == 'true'
